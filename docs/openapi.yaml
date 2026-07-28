@@ -1,0 +1,106 @@
+openapi: 3.0.3
+info:
+  title: Delivroo Express API
+  description: API de delivery — riders, stores e orders
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:3000/api
+    description: Desenvolvimento local
+
+tags:
+  - name: Riders
+    description: Autenticação e perfil dos entregadores
+
+paths:
+  /riders/register:
+    post:
+      tags: [Riders]
+      summary: Cadastrar rider
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RiderRegister'
+      responses:
+        '201':
+          description: Conta criada com sucesso
+        '400':
+          description: Dados inválidos ou email já cadastrado
+
+  /riders/login:
+    post:
+      tags: [Riders]
+      summary: Login do rider
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RiderLogin'
+      responses:
+        '200':
+          description: Login realizado — retorna token JWT
+        '400':
+          description: Email ou senha inválidos
+        '403':
+          description: Conta desativada
+
+  /riders/me:
+    get:
+      tags: [Riders]
+      summary: Dados do rider autenticado
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Dados do rider
+        '401':
+          description: Não autorizado
+        '403':
+          description: Conta desativada
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    RiderRegister:
+      type: object
+      required: [name, email, password, phone]
+      properties:
+        name:
+          type: string
+          example: João Entregador
+        email:
+          type: string
+          format: email
+          example: joao@email.com
+        password:
+          type: string
+          minLength: 3
+          example: "123456"
+        phone:
+          type: string
+          example: "11999999999"
+        vehicleType:
+          type: string
+          enum: [Carro, Moto, Bicicleta]
+          example: Moto
+        doc:
+          type: string
+          example: "12345678900"
+
+    RiderLogin:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string

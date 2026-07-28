@@ -1,6 +1,13 @@
 import express from 'express';
 import cors from 'cors';
 import router from './routes/index.js';
+// documentação da api
+import swaggerUi from 'swagger-ui-express';
+import fs from 'fs';
+import YAML from 'yaml';
+
+const openapiFile = fs.readFileSync('./docs/openapi.yaml', 'utf8');
+const swaggerDocument = YAML.parse(openapiFile);
 
 const app = express();
 
@@ -13,5 +20,6 @@ app.get('/', (req, res) => {
 });
 
 app.use('/api', router);
+app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
 export default app;
