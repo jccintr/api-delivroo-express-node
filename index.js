@@ -1,16 +1,9 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
-/*
-import AdminRouter from './routes/adminRoutes.js';
-import PagamentoRouter from './routes/pagamentoRoutes.js';
-import PassengerRouter from './routes/passengerRoutes.js';
-import DriverRouter from './routes/driverRoutes.js';
-import RideRouter from './routes/rideRoutes.js';
-import BairrosRouter from './routes/bairroRoutes.js';
-*/
 import websocket from './websocket.js';
 import cors from 'cors';
+import router from './routes/index.js';
 
 
 
@@ -33,14 +26,8 @@ app.get('/', function(req, res) {
   });
   */
 
-  /*
-  app.use(AdminRouter);
-  app.use(PagamentoRouter);
-  app.use(PassengerRouter);
-  app.use(DriverRouter);
-  app.use(RideRouter);
-  app.use(BairrosRouter);
-*/
+  
+app.use('/api', router);
 
  
 
