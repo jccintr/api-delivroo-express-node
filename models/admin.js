@@ -19,6 +19,11 @@ const adminSchema = new mongoose.Schema({
         type: String,
         required: false,
         default: null
+    },
+    active:{
+        type:Boolean,
+        required:false,
+        default:true
     }
     
    

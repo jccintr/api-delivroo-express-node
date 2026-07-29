@@ -13,7 +13,7 @@ const riderPayload = {
   vehicleType: 'Moto',
 };
 
-describe('Rider API', () => {
+describe('Rider Routes', () => {
   // =====================
   // REGISTER
   // =====================

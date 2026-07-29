@@ -6,6 +6,8 @@ let mongoServer;
 
 beforeAll(async () => {
   process.env.JWT_SECRET_RIDER = 'test-secret-rider';
+  process.env.JWT_SECRET_ADMIN = 'test-secret-admin';
+  process.env.JWT_SECRET_STORE = 'test-secret-store';
 
   // Garante que não há conexão anterior
   if (mongoose.connection.readyState !== 0) {
