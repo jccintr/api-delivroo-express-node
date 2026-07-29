@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Delivroo Express API
-  description: API de delivery — riders, stores e orders
+  description: API de delivery — riders, stores, orders e admin
   version: 1.0.0
 
 servers:
@@ -11,8 +11,13 @@ servers:
 tags:
   - name: Riders
     description: Autenticação e perfil dos entregadores
+  - name: Admin
+    description: Autenticação e gestão de administradores
 
 paths:
+  # =====================
+  # RIDERS
+  # =====================
   /riders/register:
     post:
       tags: [Riders]
@@ -60,6 +65,107 @@ paths:
           description: Não autorizado
         '403':
           description: Conta desativada
+        '404':
+          description: Usuário não encontrado
+
+  # =====================
+  # ADMIN
+  # =====================
+  /admin/register:
+    post:
+      tags: [Admin]
+      summary: Cadastrar admin (registro inicial)
+      description: Cria a primeira conta de administrador. Em produção, considere restringir ou remover esta rota.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminRegister'
+      responses:
+        '201':
+          description: Conta criada com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminRegisterResponse'
+        '400':
+          description: Dados inválidos ou email já cadastrado
+        '500':
+          description: Erro interno do servidor
+
+  /admin/login:
+    post:
+      tags: [Admin]
+      summary: Login do admin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminLogin'
+      responses:
+        '200':
+          description: Login realizado — retorna token JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminLoginResponse'
+        '400':
+          description: Email ou senha inválidos
+        '403':
+          description: Conta desativada
+        '500':
+          description: Erro interno do servidor
+
+  /admin/me:
+    get:
+      tags: [Admin]
+      summary: Dados do admin autenticado
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Dados do admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminProfile'
+        '401':
+          description: Não autorizado
+        '403':
+          description: Conta desativada
+        '404':
+          description: Usuário não encontrado
+        '500':
+          description: Erro interno do servidor
+
+  /admin/create:
+    post:
+      tags: [Admin]
+      summary: Criar novo admin (protegido)
+      description: Cria um novo administrador. Requer autenticação de um admin já existente.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminRegister'
+      responses:
+        '201':
+          description: Conta criada com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminRegisterResponse'
+        '400':
+          description: Dados inválidos ou email já cadastrado
+        '401':
+          description: Não autorizado
+        '500':
+          description: Erro interno do servidor
 
 components:
   securitySchemes:
@@ -69,6 +175,7 @@ components:
       bearerFormat: JWT
 
   schemas:
+    # ----- Rider -----
     RiderRegister:
       type: object
       required: [name, email, password, phone]
@@ -102,5 +209,83 @@ components:
         email:
           type: string
           format: email
+          example: joao@email.com
         password:
           type: string
+          example: "123456"
+
+    # ----- Admin -----
+    AdminRegister:
+      type: object
+      required: [name, email, password]
+      properties:
+        name:
+          type: string
+          example: Maria Admin
+        email:
+          type: string
+          format: email
+          example: maria@admin.com
+        password:
+          type: string
+          minLength: 3
+          example: "123456"
+
+    AdminLogin:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          example: maria@admin.com
+        password:
+          type: string
+          example: "123456"
+
+    AdminRegisterResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Conta criada com sucesso.
+        admin:
+          $ref: '#/components/schemas/AdminProfile'
+
+    AdminLoginResponse:
+      type: object
+      properties:
+        _id:
+          type: string
+          example: "665f1a2b3c4d5e6f7a8b9c0d"
+        name:
+          type: string
+          example: Maria Admin
+        email:
+          type: string
+          format: email
+          example: maria@admin.com
+        active:
+          type: boolean
+          example: true
+        token:
+          type: string
+          description: JWT para autenticação nas rotas protegidas
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+    AdminProfile:
+      type: object
+      properties:
+        _id:
+          type: string
+          example: "665f1a2b3c4d5e6f7a8b9c0d"
+        name:
+          type: string
+          example: Maria Admin
+        email:
+          type: string
+          format: email
+          example: maria@admin.com
+        active:
+          type: boolean
+          example: true
