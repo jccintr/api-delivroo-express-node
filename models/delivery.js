@@ -35,8 +35,12 @@ const deliverySchema = new mongoose.Schema({
   {
     data:{ type:Date,},
     descricao:{type:String,}       
-  }
+  },
  ],
+  package: {
+       items: number,
+       weight: number
+  }
 
 }, { timestamps: true });
 
