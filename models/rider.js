@@ -83,6 +83,11 @@ const riderSchema = new mongoose.Schema({
     required: false,
     default: null
   },
+  accountApprovedAt: {
+    type: Date,
+    required: false,
+    default: null
+  },
   active: {
     type: Boolean,
     required: false,

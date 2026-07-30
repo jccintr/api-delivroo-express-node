@@ -117,6 +117,7 @@ describe('Rider Routes', () => {
       expect(res.body.error).toBe('Email ou senha inválidos.');
     });
 
+   
     it('deve retornar 403 se a conta estiver desativada', async () => {
       await Rider.updateOne({ email: riderPayload.email }, { active: false });
 

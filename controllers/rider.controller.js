@@ -50,21 +50,24 @@ export const login = async (req, res) => {
     const { email, password } = req.body;
 
     const rider = await Rider.findOne({ email }).select(
-      'name email phone password avatar doc active vehicle rating online'
+      'name email phone password avatar doc active accountApprovedAt vehicle rating online'
     );
 
     if (!rider) {
       return res.status(400).json({ error: 'Email ou senha inválidos.' });
     }
 
-    if (!rider.active) {
-      return res.status(403).json({ error: 'Conta desativada.' });
-    }
 
     const isPasswordValid = await bcryptjs.compare(password, rider.password);
     if (!isPasswordValid) {
       return res.status(400).json({ error: 'Email ou senha inválidos.' });
     }
+
+     if (!rider.active) {
+      return res.status(403).json({ error: 'Conta desativada.' });
+    }
+
+    
 
     const token = jsonwebtoken.sign(
       { riderId: rider._id },

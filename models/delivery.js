@@ -37,12 +37,18 @@ const deliverySchema = new mongoose.Schema({
     descricao:{type:String,}       
   },
  ],
-  package: {
-       items: number,
-       weight: number
-  }
+ package: {
+  description:   { type: String, required: true },  
+  category :     { type: String, enum: ['Comida', 'Documentos', 'Pacote', 'Medicamentos', 'Peças','Outros'],default: 'Comida'},
+  quantity:      { type: Number, required: true, min: 1, default: 1 },
+  weight:        { type: Number, required: false },   // kg
+  declaredvalue: { type: Number, default: 0 },
+  notes:         { type: String },
+  payment:       { type: String, enum: ['Dinheiro','Cartão Crédito','Cartão Débito','Pago'], default: 'Dinheiro'},
+  cashChange:    { type: Number, default: 0 },
+}
 
 }, { timestamps: true });
 
-const Delivery = mongoose.model('Delivery', storeSchema);
+const Delivery = mongoose.model('Delivery', deliverySchema);
 export default Delivery;

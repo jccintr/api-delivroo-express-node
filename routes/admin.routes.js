@@ -11,5 +11,7 @@ router.post('/register', registerValidator, validate, AdminController.register);
 router.post('/login', loginValidator, validate, AdminController.login);
 router.get('/me', AuthAdmin, AdminController.validateToken);
 router.post('/create', AuthAdmin,registerValidator, validate, AdminController.register);
+router.patch('/riders/:id/approve', AuthAdmin, AdminController.approveRider);
+router.patch('/riders/:id/active', AuthAdmin, AdminController.setRiderActive);
 
 export default router;

@@ -1,6 +1,7 @@
 import bcryptjs from 'bcryptjs';
 import jsonwebtoken from 'jsonwebtoken';
 import Admin from '../models/admin.js';
+import Rider from '../models/rider.js';
 
 export const register = async (req, res) => {
   try {
@@ -129,6 +130,67 @@ export const createAdminUser = async (req, res) => {
     });
   } catch (error) {
     console.error('Erro no register:', error);
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};
+
+// Aprovar conta do Rider
+export const approveRider = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const rider = await Rider.findById(id);
+
+    if (!rider) {
+      return res.status(404).json({ error: 'Entregador não encontrado.' });
+    }
+
+    if (rider.accountApprovedAt) {
+      return res.status(400).json({ error: 'Conta já aprovada.' });
+    }
+
+    rider.accountApprovedAt = new Date();
+    await rider.save();
+
+    const { password: _, ...riderData } = rider._doc;
+
+    return res.status(200).json({
+      message: 'Conta aprovada com sucesso.',
+      rider: riderData
+    });
+  } catch (error) {
+    console.error('Erro no approveRider:', error);
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};
+
+// Ativar ou desativar conta do Rider
+export const setRiderActive = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { active } = req.body;
+
+    if (typeof active !== 'boolean') {
+      return res.status(400).json({ error: 'O campo "active" deve ser true ou false.' });
+    }
+
+    const rider = await Rider.findById(id);
+
+    if (!rider) {
+      return res.status(404).json({ error: 'Entregador não encontrado.' });
+    }
+
+    rider.active = active;
+    await rider.save();
+
+    const { password: _, ...riderData } = rider._doc;
+
+    return res.status(200).json({
+      message: active ? 'Conta ativada com sucesso.' : 'Conta desativada com sucesso.',
+      rider: riderData
+    });
+  } catch (error) {
+    console.error('Erro no setRiderActive:', error);
     return res.status(500).json({ error: 'Erro interno do servidor.' });
   }
 };
