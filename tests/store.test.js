@@ -55,6 +55,64 @@ describe('Store Routes', () => {
   // LOGIN
   // =====================
   describe('POST /api/stores/login', () => {
+      beforeEach(async () => {
+           const salt = await bcryptjs.genSalt(10);
+           const hashedPassword = await bcryptjs.hash(storePayload.password, salt);
+     
+           await Store.create({
+             name: storePayload.name,
+             email: storePayload.email,
+             password: hashedPassword,
+             phone: storePayload.phone,
+           });
+      });
+      it('deve fazer login com sucesso e retornar token', async () => {
+        const res = await request(app)
+          .post('/api/stores/login')
+          .send({
+            email: storePayload.email,
+            password: storePayload.password,
+          });
 
+        expect(res.status).toBe(200);
+        expect(res.body.token).toBeDefined();
+        expect(res.body.email).toBe(storePayload.email);
+        expect(res.body.password).toBeUndefined();
+      });
+      it('deve retornar 400 com senha incorreta', async () => {
+            const res = await request(app)
+              .post('/api/stores/login')
+              .send({
+                email: storePayload.email,
+                password: 'senha-errada',
+              });
+      
+            expect(res.status).toBe(400);
+            expect(res.body.error).toBe('Email ou senha inválidos.');
+      });
+      it('deve retornar 400 com email inexistente', async () => {
+            const res = await request(app)
+              .post('/api/stores/login')
+              .send({
+                email: 'naoexiste@test.com',
+                password: '123456',
+              });
+      
+            expect(res.status).toBe(400);
+            expect(res.body.error).toBe('Email ou senha inválidos.');
+       });
+       it('deve retornar 403 se a conta estiver desativada', async () => {
+          await Store.updateOne({ email: storePayload.email }, { active: false });
+
+          const res = await request(app)
+            .post('/api/stores/login')
+            .send({
+              email: storePayload.email,
+              password: storePayload.password,
+            });
+
+          expect(res.status).toBe(403);
+          expect(res.body.error).toBe('Conta desativada.');
+       });
   });
 });
