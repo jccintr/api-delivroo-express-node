@@ -10,7 +10,7 @@ import {registerStoreValidator} from '../validators/store.validator.js'
 const router = Router();
 
 router.post('/register', registerStoreValidator, validate, StoreController.register);
-//router.post('/login', loginValidator, validate, RiderController.login);
+router.post('/login', loginValidator, validate, StoreController.login);
 //router.get('/me', AuthRider, RiderController.validateToken);
 
 export default router;
