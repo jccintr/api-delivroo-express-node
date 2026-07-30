@@ -50,7 +50,7 @@ export const login = async (req, res) => {
     const { email, password } = req.body;
 
     const rider = await Rider.findOne({ email }).select(
-      'name email phone password avatar doc active accountApprovedAt vehicle rating online'
+      'name email phone password avatar doc active emailVerifiedAt accountApprovedAt vehicle online'
     );
 
     if (!rider) {
@@ -92,7 +92,7 @@ export const validateToken = async (req, res) => {
     const riderId = req.user?.id || req.body.riderId;
 
     const rider = await Rider.findById(riderId).select(
-      'name email phone avatar doc active vehicle rating online position'
+      'name email phone avatar doc active emailVerifiedAt accountApprovedAt vehicle online'
     );
 
     if (!rider) {
