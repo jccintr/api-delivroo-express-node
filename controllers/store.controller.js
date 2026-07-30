@@ -79,3 +79,27 @@ export const login = async (req, res) => {
     return res.status(500).json({ error: 'Erro interno do servidor.' });
   }
 };
+
+export const validateToken = async (req, res) => {
+  try {
+    const storeId = req.user?.id || req.body.storeId;
+
+    const store = await Store.findById(storeId).select(
+      'name email phone avatar doc active'
+    );
+
+    if (!store) {
+      return res.status(404).json({ error: 'Loja não encontrada.' });
+    }
+
+    if (!store.active) {
+      return res.status(403).json({ error: 'Conta desativada.' });
+    }
+
+    
+    return res.status(200).json(store);
+  } catch (error) {
+    console.error('Erro no validateToken:', error);
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};

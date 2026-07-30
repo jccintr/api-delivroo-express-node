@@ -11,6 +11,6 @@ const router = Router();
 
 router.post('/register', registerStoreValidator, validate, StoreController.register);
 router.post('/login', loginValidator, validate, StoreController.login);
-//router.get('/me', AuthRider, RiderController.validateToken);
+router.get('/me', AuthStore, StoreController.validateToken);
 
 export default router;
