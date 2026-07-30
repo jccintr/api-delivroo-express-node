@@ -167,6 +167,98 @@ paths:
         '500':
           description: Erro interno do servidor
 
+  /admin/riders/{id}/approve:
+    patch:
+      tags: [Admin]
+      summary: Aprovar conta de um rider
+      description: Define `accountApprovedAt` com a data/hora atual. Só pode ser feito uma vez por rider.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID do rider (MongoDB ObjectId)
+          schema:
+            type: string
+            example: "665f1a2b3c4d5e6f7a8b9c0d"
+      responses:
+        '200':
+          description: Conta aprovada com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RiderActionResponse'
+        '400':
+          description: Conta já aprovada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Conta já aprovada.
+        '401':
+          description: Não autorizado
+        '404':
+          description: Entregador não encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Entregador não encontrado.
+        '500':
+          description: Erro interno do servidor
+
+  /admin/riders/{id}/active:
+    patch:
+      tags: [Admin]
+      summary: Ativar ou desativar conta de um rider
+      description: Altera o campo `active` do rider. Contas desativadas não conseguem fazer login.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID do rider (MongoDB ObjectId)
+          schema:
+            type: string
+            example: "665f1a2b3c4d5e6f7a8b9c0d"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetRiderActive'
+      responses:
+        '200':
+          description: Status da conta alterado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RiderActionResponse'
+        '400':
+          description: Campo active inválido (deve ser boolean)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'O campo "active" deve ser true ou false.'
+        '401':
+          description: Não autorizado
+        '404':
+          description: Entregador não encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Entregador não encontrado.
+        '500':
+          description: Erro interno do servidor
+
 components:
   securitySchemes:
     bearerAuth:
@@ -214,45 +306,7 @@ components:
           type: string
           example: "123456"
 
-    # ----- Admin -----
-    AdminRegister:
-      type: object
-      required: [name, email, password]
-      properties:
-        name:
-          type: string
-          example: Maria Admin
-        email:
-          type: string
-          format: email
-          example: maria@admin.com
-        password:
-          type: string
-          minLength: 3
-          example: "123456"
-
-    AdminLogin:
-      type: object
-      required: [email, password]
-      properties:
-        email:
-          type: string
-          format: email
-          example: maria@admin.com
-        password:
-          type: string
-          example: "123456"
-
-    AdminRegisterResponse:
-      type: object
-      properties:
-        message:
-          type: string
-          example: Conta criada com sucesso.
-        admin:
-          $ref: '#/components/schemas/AdminProfile'
-
-    AdminLoginResponse:
+    RiderProfile:
       type: object
       properties:
         _id:
@@ -260,32 +314,23 @@ components:
           example: "665f1a2b3c4d5e6f7a8b9c0d"
         name:
           type: string
-          example: Maria Admin
+          example: João Entregador
         email:
           type: string
           format: email
-          example: maria@admin.com
+          example: joao@email.com
+        phone:
+          type: string
+          example: "11999999999"
         active:
           type: boolean
           example: true
-        token:
+        accountApprovedAt:
           type: string
-          description: JWT para autenticação nas rotas protegidas
-          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-
-    AdminProfile:
-      type: object
-      properties:
-        _id:
-          type: string
-          example: "665f1a2b3c4d5e6f7a8b9c0d"
-        name:
-          type: string
-          example: Maria Admin
-        email:
-          type: string
-          format: email
-          example: maria@admin.com
-        active:
-          type: boolean
-          example: true
+          format: date-time
+          nullable: true
+          example: "2026-07-29T20:15:00.000Z"
+        vehicle:
+          type: object
+          properties:
+            type:

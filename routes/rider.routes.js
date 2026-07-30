@@ -1,7 +1,7 @@
 
 import { Router } from 'express';
 import * as RiderController from '../controllers/rider.controller.js';
-import AuthRider from '../middlewares/auth-rider.js';
+import AuthRider from '../middlewares/auth.rider.js';
 import {validate} from '../middlewares/validate.js'
 import { registerValidator, loginValidator } from '../validators/rider.validator.js';
 
