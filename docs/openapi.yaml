@@ -13,6 +13,8 @@ tags:
     description: Autenticação e perfil dos entregadores
   - name: Admin
     description: Autenticação e gestão de administradores
+  - name: Stores
+    description: Autenticação e perfil das lojas
 
 paths:
   # =====================
@@ -259,6 +261,107 @@ paths:
         '500':
           description: Erro interno do servidor
 
+  # =====================
+  # STORES
+  # =====================
+  /stores/register:
+    post:
+      tags: [Stores]
+      summary: Cadastrar loja
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StoreRegister'
+      responses:
+        '201':
+          description: Conta criada com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoreRegisterResponse'
+        '400':
+          description: Dados inválidos ou email já cadastrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Email já cadastrado.
+        '500':
+          description: Erro interno do servidor
+
+  /stores/login:
+    post:
+      tags: [Stores]
+      summary: Login da loja
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StoreLogin'
+      responses:
+        '200':
+          description: Login realizado — retorna token JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoreLoginResponse'
+        '400':
+          description: Email ou senha inválidos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Email ou senha inválidos.
+        '403':
+          description: Conta desativada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Conta desativada.
+        '500':
+          description: Erro interno do servidor
+
+  /stores/me:
+    get:
+      tags: [Stores]
+      summary: Dados da loja autenticada
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Dados da loja
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoreProfile'
+        '401':
+          description: Não autorizado
+        '403':
+          description: Conta desativada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Conta desativada.
+        '404':
+          description: Loja não encontrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Loja não encontrada.
+        '500':
+          description: Erro interno do servidor
+
 components:
   securitySchemes:
     bearerAuth:
@@ -334,3 +437,222 @@ components:
           type: object
           properties:
             type:
+              type: string
+              enum: [Carro, Moto, Bicicleta]
+              example: Moto
+            model:
+              type: string
+              nullable: true
+            color:
+              type: string
+              nullable: true
+            plate:
+              type: string
+              nullable: true
+        rating:
+          type: number
+          example: 5
+        online:
+          type: boolean
+          example: false
+
+    RiderActionResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Conta aprovada com sucesso.
+        rider:
+          $ref: '#/components/schemas/RiderProfile'
+
+    SetRiderActive:
+      type: object
+      required: [active]
+      properties:
+        active:
+          type: boolean
+          description: true = ativar | false = desativar
+          example: false
+
+    # ----- Admin -----
+    AdminRegister:
+      type: object
+      required: [name, email, password]
+      properties:
+        name:
+          type: string
+          example: Maria Admin
+        email:
+          type: string
+          format: email
+          example: maria@admin.com
+        password:
+          type: string
+          minLength: 3
+          example: "123456"
+
+    AdminLogin:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          example: maria@admin.com
+        password:
+          type: string
+          example: "123456"
+
+    AdminRegisterResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Conta criada com sucesso.
+        admin:
+          $ref: '#/components/schemas/AdminProfile'
+
+    AdminLoginResponse:
+      type: object
+      properties:
+        _id:
+          type: string
+          example: "665f1a2b3c4d5e6f7a8b9c0d"
+        name:
+          type: string
+          example: Maria Admin
+        email:
+          type: string
+          format: email
+          example: maria@admin.com
+        active:
+          type: boolean
+          example: true
+        token:
+          type: string
+          description: JWT para autenticação nas rotas protegidas
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+    AdminProfile:
+      type: object
+      properties:
+        _id:
+          type: string
+          example: "665f1a2b3c4d5e6f7a8b9c0d"
+        name:
+          type: string
+          example: Maria Admin
+        email:
+          type: string
+          format: email
+          example: maria@admin.com
+        active:
+          type: boolean
+          example: true
+
+    # ----- Store -----
+    StoreRegister:
+      type: object
+      required: [name, email, password, phone]
+      properties:
+        name:
+          type: string
+          example: Pizzaria do Centro
+        email:
+          type: string
+          format: email
+          example: contato@pizzaria.com
+        password:
+          type: string
+          minLength: 3
+          example: "123456"
+        phone:
+          type: string
+          example: "11988887777"
+
+    StoreLogin:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          example: contato@pizzaria.com
+        password:
+          type: string
+          example: "123456"
+
+    StoreProfile:
+      type: object
+      properties:
+        _id:
+          type: string
+          example: "665f1a2b3c4d5e6f7a8b9c0d"
+        name:
+          type: string
+          example: Pizzaria do Centro
+        email:
+          type: string
+          format: email
+          example: contato@pizzaria.com
+        phone:
+          type: string
+          example: "11988887777"
+        avatar:
+          type: string
+          nullable: true
+          example: null
+        doc:
+          type: string
+          nullable: true
+          example: null
+        active:
+          type: boolean
+          example: true
+
+    StoreRegisterResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Conta criada com sucesso.
+        store:
+          $ref: '#/components/schemas/StoreProfile'
+
+    StoreLoginResponse:
+      type: object
+      properties:
+        _id:
+          type: string
+          example: "665f1a2b3c4d5e6f7a8b9c0d"
+        name:
+          type: string
+          example: Pizzaria do Centro
+        email:
+          type: string
+          format: email
+          example: contato@pizzaria.com
+        phone:
+          type: string
+          example: "11988887777"
+        avatar:
+          type: string
+          nullable: true
+        doc:
+          type: string
+          nullable: true
+        active:
+          type: boolean
+          example: true
+        token:
+          type: string
+          description: JWT para autenticação nas rotas protegidas de store
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+    # ----- Common -----
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          example: Entregador não encontrado.
