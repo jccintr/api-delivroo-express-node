@@ -115,4 +115,64 @@ describe('Store Routes', () => {
           expect(res.body.error).toBe('Conta desativada.');
        });
   });
+   // =====================
+  // VALIDATE TOKEN (GET /me)
+  // =====================
+   describe('GET /api/stores/me', () => {
+     let token;
+     let storeId;
+    
+     beforeEach(async () => {
+        const salt = await bcryptjs.genSalt(10);
+        const hashedPassword = await bcryptjs.hash(storePayload.password, salt);
+
+        const store = await Store.create({
+          name: storePayload.name,
+          email: storePayload.email,
+          password: hashedPassword,
+          phone: storePayload.phone,
+        });
+
+        storeId = store._id;
+        token = jsonwebtoken.sign(
+          { storeId: store._id },
+          process.env.JWT_SECRET_STORE
+        );
+     });
+      it('deve retornar os dados da loja autenticada', async () => {
+           const res = await request(app)
+             .get('/api/stores/me')
+             .set('Authorization', `Bearer ${token}`);
+     
+           expect(res.status).toBe(200);
+           expect(res.body.email).toBe(storePayload.email);
+           expect(res.body.name).toBe(storePayload.name);
+           expect(res.body.password).toBeUndefined();
+      });
+      it('deve retornar 401 sem token', async () => {
+          const res = await request(app).get('/api/stores/me');
+    
+          expect(res.status).toBe(401);
+          expect(res.body.error).toBe('Não autorizado');
+      });
+      it('deve retornar 401 com token inválido', async () => {
+            const res = await request(app)
+              .get('/api/stores/me')
+              .set('Authorization', 'Bearer token-invalido');
+      
+            expect(res.status).toBe(401);
+            expect(res.body.error).toBe('Não autorizado');
+      });
+      it('deve retornar 403 se a conta estiver desativada', async () => {
+        await Store.findByIdAndUpdate(storeId, { active: false });
+
+        const res = await request(app)
+          .get('/api/stores/me')
+          .set('Authorization', `Bearer ${token}`);
+
+        expect(res.status).toBe(403);
+        expect(res.body.error).toBe('Conta desativada.');
+     });
+
+   });
 });
