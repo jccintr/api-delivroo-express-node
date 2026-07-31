@@ -19,6 +19,10 @@ app.get('/', (req, res) => {
   res.send('DELIVRO EXPRESS API');
 });
 
+app.get('/health', (req, res) => {
+  res.send('DELIVRO EXPRESS API is healthy');
+});
+
 app.use('/api', router);
 app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
