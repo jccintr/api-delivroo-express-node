@@ -1,6 +1,7 @@
 import bcryptjs from 'bcryptjs';
 import jsonwebtoken from 'jsonwebtoken';
 import Rider from '../models/rider.js';
+import { generateVerificationCode,sendRiderVerificationAccountEmail }  from '../utils/sendEmail.js'
 
 
 export const register = async (req, res) => {
@@ -22,16 +23,23 @@ export const register = async (req, res) => {
         color:null,
         plate:null,
     }
+    const emailVerificationCode = generateVerificationCode();
+    
     const newRider = new Rider({
       name,
       email,
       password: hashedPassword,
       phone,
       doc: doc || null,
-      vehicle: vehicle || null
+      vehicle: vehicle || null,
+      emailVerificationCode
     });
 
     await newRider.save();
+
+    // envia o email para o usuário com o código de verificação da conta
+   
+    sendRiderVerificationAccountEmail(newRider.email,emailVerificationCode);
 
     const { password: _, ...riderData } = newRider._doc;
 
@@ -110,3 +118,28 @@ export const validateToken = async (req, res) => {
     return res.status(500).json({ error: 'Erro interno do servidor.' });
   }
 };
+
+export const verifyAccount = async (req,res) => {
+
+    try {
+        const riderId = req.user?.id
+        const {code} = req.body;
+        const rider = await Rider.findById(riderId).select('name email phone avatar doc emailVerificationCode emailVerifiedAt');
+        if(rider.emailVerifiedAt){
+            return res.status(400).json({error:'Conta já verificada.'});
+        }
+        if(rider.emailVerificationCode==code){
+            rider.emailVerifiedAt = new Date();
+            await rider.save();
+            return res.status(200).json(rider);
+        } else {
+            return res.status(403).json({error:'Código de verificação inválido.'});
+        }
+    } catch(error){
+       console.error('Erro no validateToken:', error);
+       return res.status(500).json({ error: 'Erro interno do servidor.' });
+    }
+
+}
+     
+  
