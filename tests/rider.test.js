@@ -27,6 +27,8 @@ describe('Rider Routes', () => {
       expect(res.body.message).toBe('Conta criada com sucesso.');
       expect(res.body.rider).toBeDefined();
       expect(res.body.rider.email).toBe(riderPayload.email);
+      expect(res.body.rider.emailVerifiedAt).toBeNull();
+      expect(res.body.rider.emailVerificationCode).toHaveLength(4);
       expect(res.body.rider.password).toBeUndefined(); // senha não deve voltar
     });
 
