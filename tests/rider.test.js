@@ -4,6 +4,7 @@ import app from '../app.js';
 import Rider from '../models/rider.js';
 import bcryptjs from 'bcryptjs';
 import jsonwebtoken from 'jsonwebtoken';
+import {createRider,createRiderWithToken} from './factories/rider.factory.js'
 
 const riderPayload = {
   name: 'João Entregador',
@@ -28,9 +29,9 @@ describe('Rider Routes', () => {
       expect(res.body.rider).toBeDefined();
       expect(res.body.rider.email).toBe(riderPayload.email);
       expect(res.body.rider.emailVerifiedAt).toBeNull();
-      expect(res.body.rider.emailVerificationCode).toBeUndefined();
-      expect(res.body.rider.resetPasswordCode).toBeUndefined();
-      expect(res.body.rider.password).toBeUndefined(); // senha não deve voltar
+      expect(res.body.rider.emailVerificationCode).toBeUndefined(); // este campo não deve ser enviado
+      expect(res.body.rider.resetPasswordCode).toBeUndefined(); // este campo não deve ser enviado
+      expect(res.body.rider.password).toBeUndefined(); // este campo não deve ser enviado
     });
 
     it('deve retornar 400 se o email já existir', async () => {
@@ -68,41 +69,30 @@ describe('Rider Routes', () => {
   // LOGIN
   // =====================
   describe('POST /api/riders/login', () => {
-    beforeEach(async () => {
-      // cria rider direto no banco para os testes de login
-      const salt = await bcryptjs.genSalt(10);
-      const hashedPassword = await bcryptjs.hash(riderPayload.password, salt);
-
-      await Rider.create({
-        name: riderPayload.name,
-        email: riderPayload.email,
-        password: hashedPassword,
-        phone: riderPayload.phone,
-        vehicle: { type: 'Moto' },
-      });
-    });
-
+    
     it('deve fazer login com sucesso e retornar token', async () => {
+      const rider = await createRider({ password: '123456' });
       const res = await request(app)
         .post('/api/riders/login')
         .send({
-          email: riderPayload.email,
-          password: riderPayload.password,
+          email: rider.email,
+          password: '123456',
         });
 
       expect(res.status).toBe(200);
       expect(res.body.token).toBeDefined();
-      expect(res.body.email).toBe(riderPayload.email);
-      expect(res.body.emailVerificationCode).toBeUndefined();
-      expect(res.body.resetPasswordCode).toBeUndefined();
-      expect(res.body.password).toBeUndefined();
+      expect(res.body.email).toBe(rider.email);
+      expect(res.body.emailVerificationCode).toBeUndefined(); // este campo não deve ser enviado
+      expect(res.body.resetPasswordCode).toBeUndefined(); // este campo não deve ser enviado
+      expect(res.body.password).toBeUndefined();  // este campo não deve ser enviado
     });
 
     it('deve retornar 400 com senha incorreta', async () => {
+      const rider = await createRider({ password: '123456' });
       const res = await request(app)
         .post('/api/riders/login')
         .send({
-          email: riderPayload.email,
+          email: rider.email,
           password: 'senha-errada',
         });
 
@@ -111,6 +101,7 @@ describe('Rider Routes', () => {
     });
 
     it('deve retornar 400 com email inexistente', async () => {
+      const rider = await createRider({ password: '123456' });
       const res = await request(app)
         .post('/api/riders/login')
         .send({
@@ -124,13 +115,14 @@ describe('Rider Routes', () => {
 
    
     it('deve retornar 403 se a conta estiver desativada', async () => {
-      await Rider.updateOne({ email: riderPayload.email }, { active: false });
+      const rider = await createRider({ password: '123456' });
+      await Rider.updateOne({ email: rider.email }, { active: false });
 
       const res = await request(app)
         .post('/api/riders/login')
         .send({
-          email: riderPayload.email,
-          password: riderPayload.password,
+          email: rider.email,
+          password: '123456',
         });
 
       expect(res.status).toBe(403);
@@ -142,36 +134,16 @@ describe('Rider Routes', () => {
   // VALIDATE TOKEN (GET /me)
   // =====================
   describe('GET /api/riders/me', () => {
-    let token;
-    let riderId;
-
-    beforeEach(async () => {
-      const salt = await bcryptjs.genSalt(10);
-      const hashedPassword = await bcryptjs.hash(riderPayload.password, salt);
-
-      const rider = await Rider.create({
-        name: riderPayload.name,
-        email: riderPayload.email,
-        password: hashedPassword,
-        phone: riderPayload.phone,
-        vehicle: { type: 'Moto' },
-      });
-
-      riderId = rider._id;
-      token = jsonwebtoken.sign(
-        { riderId: rider._id },
-        process.env.JWT_SECRET_RIDER
-      );
-    });
-
-    it('deve retornar os dados do rider autenticado', async () => {
+   
+    it('deve retornar status 200 e os dados do rider autenticado', async () => {
+      const {rider,token} = await createRiderWithToken({ password: '123456' });
       const res = await request(app)
         .get('/api/riders/me')
         .set('Authorization', `Bearer ${token}`);
 
       expect(res.status).toBe(200);
-      expect(res.body.email).toBe(riderPayload.email);
-      expect(res.body.name).toBe(riderPayload.name);
+      expect(res.body.email).toBe(rider.email);
+      expect(res.body.name).toBe(rider.name);
       expect(res.body.emailVerificationCode).toBeUndefined();
       expect(res.body.resetPasswordCode).toBeUndefined();
       expect(res.body.password).toBeUndefined();
@@ -194,7 +166,8 @@ describe('Rider Routes', () => {
     });
 
     it('deve retornar 403 se a conta estiver desativada', async () => {
-      await Rider.findByIdAndUpdate(riderId, { active: false });
+      const {rider,token} = await createRiderWithToken({ password: '123456' });
+      await Rider.findByIdAndUpdate(rider._id, { active: false });
 
       const res = await request(app)
         .get('/api/riders/me')
@@ -204,4 +177,63 @@ describe('Rider Routes', () => {
       expect(res.body.error).toBe('Conta desativada.');
     });
   });
+  // =====================
+  // Verify Account (POST /verify-account)
+  // =====================
+   describe('POST /api/riders/verify-account', () => {
+
+    it('deve retornar 401 quando não autenticado (sem token)', async () => {
+      const res = await request(app).post('/api/riders/verify-account');
+      expect(res.status).toBe(401);
+      expect(res.body.error).toBe('Não autorizado');
+    });
+    it('deve retornar 401 quando token for inválido', async () => {
+      const {rider,token} = await createRiderWithToken({ password: '123456' });
+      const res = await request(app)
+         .post('/api/riders/verify-account')
+         .set('Authorization', `Bearer ${token}-invalido`)
+         .send({code: '1234'});
+
+      expect(res.status).toBe(401);
+      expect(res.body.error).toBe('Não autorizado');
+    });
+    it('deve retornar status 200 e verificar a conta quando o código for válido', async () => {
+      const {rider,token} = await createRiderWithToken({ password: '123456' });
+      const validCode = '1234';
+      await Rider.findByIdAndUpdate(rider._id, { emailVerificationCode: validCode });
+      const res = await request(app)
+         .post('/api/riders/verify-account')
+         .set('Authorization', `Bearer ${token}`)
+         .send({code: validCode});
+
+      expect(res.status).toBe(200);
+      expect(res.body.emailVerifiedAt).not.toBeNull();
+      
+    });
+    it('deve retornar status 403 quando o código for inválido', async () => {
+      const {rider,token} = await createRiderWithToken({ password: '123456' });
+      const validCode = '1234';
+      await Rider.findByIdAndUpdate(rider._id, { emailVerificationCode: validCode });
+      const res = await request(app)
+         .post('/api/riders/verify-account')
+         .set('Authorization', `Bearer ${token}`)
+         .send({code: '0000'});
+
+      expect(res.status).toBe(403);
+      expect(res.body.error).toBe('Código de verificação inválido.');
+    });
+    it('deve retornar status 400 quando a conta já estiver verificada', async () => {
+      const {rider,token} = await createRiderWithToken({ password: '123456' });
+      const validCode = '1234';
+      await Rider.findByIdAndUpdate(rider._id, { emailVerificationCode: validCode, emailVerifiedAt: new Date() });
+      const res = await request(app)
+         .post('/api/riders/verify-account')
+         .set('Authorization', `Bearer ${token}`)
+         .send({code: validCode});
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('Conta já verificada.');
+    });
+
+   });
 });
