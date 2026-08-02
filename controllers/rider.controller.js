@@ -41,7 +41,8 @@ export const register = async (req, res) => {
    
     sendRiderVerificationAccountEmail(newRider.email,emailVerificationCode);
 
-    const { password: _, ...riderData } = newRider._doc;
+    const { password: _, emailVerificationCode: __, resetPasswordCode: ___, ...riderData } = newRider._doc;
+    
 
     return res.status(201).json({
       message: 'Conta criada com sucesso.',
@@ -123,15 +124,18 @@ export const verifyAccount = async (req,res) => {
 
     try {
         const riderId = req.user?.id
+        console.log('riderId:', riderId);
         const {code} = req.body;
-        const rider = await Rider.findById(riderId).select('name email phone avatar doc emailVerificationCode emailVerifiedAt');
+       
+        const rider = await Rider.findById(riderId).select('name email phone avatar doc active accountApprovedAt vehicle online emailVerificationCode emailVerifiedAt');
         if(rider.emailVerifiedAt){
             return res.status(400).json({error:'Conta já verificada.'});
         }
-        if(rider.emailVerificationCode==code){
+        if(rider.emailVerificationCode === code){
             rider.emailVerifiedAt = new Date();
             await rider.save();
-            return res.status(200).json(rider);
+            const { emailVerificationCode: _, ...riderData } = rider._doc;
+            return res.status(200).json(riderData);
         } else {
             return res.status(403).json({error:'Código de verificação inválido.'});
         }

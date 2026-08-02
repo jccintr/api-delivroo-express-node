@@ -28,7 +28,8 @@ describe('Rider Routes', () => {
       expect(res.body.rider).toBeDefined();
       expect(res.body.rider.email).toBe(riderPayload.email);
       expect(res.body.rider.emailVerifiedAt).toBeNull();
-      expect(res.body.rider.emailVerificationCode).toHaveLength(4);
+      expect(res.body.rider.emailVerificationCode).toBeUndefined();
+      expect(res.body.rider.resetPasswordCode).toBeUndefined();
       expect(res.body.rider.password).toBeUndefined(); // senha não deve voltar
     });
 
@@ -92,6 +93,8 @@ describe('Rider Routes', () => {
       expect(res.status).toBe(200);
       expect(res.body.token).toBeDefined();
       expect(res.body.email).toBe(riderPayload.email);
+      expect(res.body.emailVerificationCode).toBeUndefined();
+      expect(res.body.resetPasswordCode).toBeUndefined();
       expect(res.body.password).toBeUndefined();
     });
 
@@ -169,6 +172,8 @@ describe('Rider Routes', () => {
       expect(res.status).toBe(200);
       expect(res.body.email).toBe(riderPayload.email);
       expect(res.body.name).toBe(riderPayload.name);
+      expect(res.body.emailVerificationCode).toBeUndefined();
+      expect(res.body.resetPasswordCode).toBeUndefined();
       expect(res.body.password).toBeUndefined();
     });
 

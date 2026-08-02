@@ -9,7 +9,7 @@ const router = Router();
 
 router.post('/register', registerValidator, validate, RiderController.register);
 router.post('/login', loginValidator, validate, RiderController.login);
-router.post('/verify-account', accountVerificationValidator, validate, RiderController.verifyAccount);
+router.post('/verify-account', accountVerificationValidator, validate,AuthRider,RiderController.verifyAccount);
 router.get('/me', AuthRider, RiderController.validateToken);
 
 export default router;
