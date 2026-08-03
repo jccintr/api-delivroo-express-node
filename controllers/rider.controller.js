@@ -1,7 +1,7 @@
 import bcryptjs from 'bcryptjs';
 import jsonwebtoken from 'jsonwebtoken';
 import Rider from '../models/rider.js';
-import { generateVerificationCode,sendRiderVerificationAccountEmail }  from '../utils/sendEmail.js'
+import { generateVerificationCode,sendRiderVerificationAccountEmail,sendAccountVerifiedEmail }  from '../utils/sendEmailV2.js'
 
 
 export const register = async (req, res) => {
@@ -124,7 +124,6 @@ export const verifyAccount = async (req,res) => {
 
     try {
         const riderId = req.user?.id
-        console.log('riderId:', riderId);
         const {code} = req.body;
        
         const rider = await Rider.findById(riderId).select('name email phone avatar doc active accountApprovedAt vehicle online emailVerificationCode emailVerifiedAt');
@@ -135,6 +134,8 @@ export const verifyAccount = async (req,res) => {
             rider.emailVerifiedAt = new Date();
             await rider.save();
             const { emailVerificationCode: _, ...riderData } = rider._doc;
+            // enviar o email confirmando a validação da conta
+            sendAccountVerifiedEmail(rider.email);
             return res.status(200).json(riderData);
         } else {
             return res.status(403).json({error:'Código de verificação inválido.'});

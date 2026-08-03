@@ -70,6 +70,50 @@ paths:
         '404':
           description: Usuário não encontrado
 
+  /riders/verify-account:
+    post:
+      tags: [Riders]
+      summary: Verificar conta do rider
+      description: |
+        Valida o código de verificação enviado por e-mail no cadastro.
+        Define `emailVerifiedAt` com a data/hora atual.
+        Requer autenticação (Bearer token).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RiderVerifyAccount'
+      responses:
+        '200':
+          description: Conta verificada com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RiderProfile'
+        '400':
+          description: Conta já verificada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Conta já verificada.
+        '401':
+          description: Não autorizado
+        '403':
+          description: Código de verificação inválido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Código de verificação inválido.
+        '500':
+          description: Erro interno do servidor
+
   # =====================
   # ADMIN
   # =====================
@@ -409,6 +453,17 @@ components:
           type: string
           example: "123456"
 
+    RiderVerifyAccount:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+          description: Código de 4 dígitos enviado por e-mail
+          example: "5048"
+          minLength: 4
+          maxLength: 4
+
     RiderProfile:
       type: object
       properties:
@@ -428,6 +483,11 @@ components:
         active:
           type: boolean
           example: true
+        emailVerifiedAt:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2026-08-02T20:15:00.000Z"
         accountApprovedAt:
           type: string
           format: date-time

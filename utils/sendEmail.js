@@ -10,10 +10,7 @@ export const generateVerificationCode = () => {
 
 }
 
-export const sendRiderVerificationAccountEmail = async(to,code) => {
-
-  const subject = "Código de verificação Delivroo Express";
-  const body = `Por favor, informe o seguinte código ${code} para ativar a sua conta no Delivroo Express e começar a receber pedidos de entregas.\nEsta é uma mensagem automática, não é necessário respondê-la.\n\nAtenciosamente\n\nEquipe Delivroo Express`;
+const sendEmail = async (to, subject, body) => {
 
   const transporter = nodemailer.createTransport({
     pool: true,
@@ -42,4 +39,17 @@ export const sendRiderVerificationAccountEmail = async(to,code) => {
       }
     });
 
+}
+
+export const sendRiderVerificationAccountEmail = async(to,code) => {
+
+  const subject = "Código de verificação Delivroo Express";
+  const body = `Por favor, informe o seguinte código ${code} para ativar a sua conta no Delivroo Express e começar a receber pedidos de entregas.\nEsta é uma mensagem automática, não é necessário respondê-la.\n\nAtenciosamente\n\nEquipe Delivroo Express`;
+  sendEmail(to, subject, body);
+  
+}
+
+export const sendAccountVerifiedEmail = async(to,code) => {
+
+   const subject = "Conta Ativada com Sucesso";
 }
