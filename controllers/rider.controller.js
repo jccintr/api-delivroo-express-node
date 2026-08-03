@@ -150,12 +150,10 @@ export const resendAccountVerificationCode = async (req, res) => {
   try {
     const riderId = req.user?.id;
 
-    const rider = await Rider.findById(riderId).select(
-      'email emailVerifiedAt emailVerificationCode'
-    );
+    const rider = await Rider.findById(riderId).select('email emailVerifiedAt emailVerificationCode');
 
     if (!rider) {
-      return res.status(404).json({ error: 'Usuário não encontrado.' });
+      return res.status(404).json({ error: 'Rider não encontrado.' });
     }
 
     if (rider.emailVerifiedAt) {

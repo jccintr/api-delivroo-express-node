@@ -237,4 +237,56 @@ describe('Rider Routes', () => {
     });
 
    });
+  // =====================
+  // Resend Account Verification Code (POST /verify-account/resend)
+  // =====================
+  describe('POST /api/riders/verify-account/resend', () => {
+    it('deve retornar 401 quando não autenticado (sem token)', async () => {
+      const res = await request(app).post('/api/riders/verify-account/resend');
+      expect(res.status).toBe(401);
+      expect(res.body.error).toBe('Não autorizado');
+    });
+    it('deve retornar 401 quando token for inválido', async () => {
+      const {rider,token} = await createRiderWithToken({ password: '123456' });
+      const res = await request(app)
+         .post('/api/riders/verify-account/resend')
+         .set('Authorization', `Bearer ${token}-invalido`);
+     
+      expect(res.status).toBe(401);
+      expect(res.body.error).toBe('Não autorizado');
+    });
+    it('deve retornar 404 quando rider não existir', async () => {
+      const {rider,token} = await createRiderWithToken({ password: '123456' });
+      await Rider.findByIdAndDelete(rider._id);
+      const res = await request(app)
+         .post('/api/riders/verify-account/resend')
+         .set('Authorization', `Bearer ${token}`);
+     
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe('Rider não encontrado.');
+    });
+    it('deve retornar 400 quando a conta já estiver verificada', async () => {
+      const {rider,token} = await createRiderWithToken({ password: '123456' });
+      const validCode = '1234';
+      await Rider.findByIdAndUpdate(rider._id, { emailVerificationCode: validCode, emailVerifiedAt: new Date() });
+      const res = await request(app)
+         .post('/api/riders/verify-account/resend')
+         .set('Authorization', `Bearer ${token}`);
+     
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('Conta já verificada.');
+    });
+     it('deve retornar 200 e reenviar o código de verificação quando o rider existir e não estiver verificado', async () => {
+       const {rider,token} = await createRiderWithToken({ password: '123456' });
+       const validCode = '1234';
+       await Rider.findByIdAndUpdate(rider._id, { emailVerificationCode: validCode });
+       const res = await request(app)
+         .post('/api/riders/verify-account/resend')
+         .set('Authorization', `Bearer ${token}`);
+     
+       expect(res.status).toBe(200);
+       expect(res.body.message).toBe('Código de verificação reenviado.');
+     });
+
+  });
 });
