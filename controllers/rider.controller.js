@@ -132,11 +132,10 @@ export const verifyAccount = async (req,res) => {
         }
         if(rider.emailVerificationCode === code){
             rider.emailVerifiedAt = new Date();
+            rider.emailVerificationCode = null;
             await rider.save();
-            const { emailVerificationCode: _, ...riderData } = rider._doc;
-            // enviar o email confirmando a validação da conta
             sendAccountVerifiedEmail(rider.email);
-            return res.status(200).json(riderData);
+            return res.status(200).json(rider);
         } else {
             return res.status(403).json({error:'Código de verificação inválido.'});
         }
@@ -146,5 +145,35 @@ export const verifyAccount = async (req,res) => {
     }
 
 }
-     
+
+export const resendAccountVerificationCode = async (req, res) => {
+  try {
+    const riderId = req.user?.id;
+
+    const rider = await Rider.findById(riderId).select(
+      'email emailVerifiedAt emailVerificationCode'
+    );
+
+    if (!rider) {
+      return res.status(404).json({ error: 'Usuário não encontrado.' });
+    }
+
+    if (rider.emailVerifiedAt) {
+      return res.status(400).json({ error: 'Conta já verificada.' });
+    }
+
+    // Gera novo código
+    const code = generateVerificationCode();
+    rider.emailVerificationCode = code;
+    await rider.save();
+
+    // Envia e-mail
+    await sendRiderVerificationAccountEmail(rider.email, code);
+
+    return res.status(200).json({message: 'Código de verificação reenviado.', });
+  } catch (error) {
+      console.error('Erro no resendVerificationCode:', error);
+      return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};
   

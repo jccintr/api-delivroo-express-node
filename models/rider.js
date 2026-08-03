@@ -108,6 +108,7 @@ const riderSchema = new mongoose.Schema({
     required: false,
     default: null
   }
+  //resetPasswordCodeExpiresAt
 }, { timestamps: true });
 
 const Rider = mongoose.model('Rider', riderSchema);

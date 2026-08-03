@@ -207,6 +207,7 @@ describe('Rider Routes', () => {
          .send({code: validCode});
 
       expect(res.status).toBe(200);
+      expect(res.body.emailVerificationCode).toBeNull();
       expect(res.body.emailVerifiedAt).not.toBeNull();
       
     });
