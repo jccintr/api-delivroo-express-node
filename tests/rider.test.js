@@ -7,6 +7,7 @@ import jsonwebtoken from 'jsonwebtoken';
 import {createRider,createRiderWithToken} from './factories/rider.factory.js'
 // Mock the sendEmail function to avoid sending real emails during tests
 import * as sendEmail from '../utils/sendEmailV2.js';
+import bcryptjs from 'bcryptjs';
 
 const riderPayload = {
   name: 'João Entregador',
@@ -422,6 +423,99 @@ describe('Rider Routes', () => {
            expect(res.body.message).toBe('Código verificado com sucesso.');
        });
 
-
    });
+  // =====================
+  // Reset Password (POST /password/reset)
+  // =====================
+    describe('POST /api/riders/password/reset', () => {
+        it('deve retornar 403 e resposta genérica quando email não existir', async () => {
+          const rider = await createRider({ password: '123456' });
+          const code = '1234';
+          const nonExistingEmail = 'fake@gmail.com';
+          const res = await request(app)
+            .post('/api/riders/password/reset')
+            .send({email: nonExistingEmail, code: code, password: 'novaSenha123'});
+
+          expect(res.status).toBe(403);
+          expect(res.body.error).toBe('Código inválido ou expirado.');
+       });
+       it('deve retornar 403 e resposta genérica quando a conta estiver desativada', async () => {
+           const rider = await createRider({ password: '123456' });
+           const code = '1234';
+           await Rider.findByIdAndUpdate(rider._id, { active: false });
+           const res = await request(app)
+            .post('/api/riders/password/reset')
+            .send({email: rider.email,code: code, password: 'novaSenha123'});
+          
+           expect(res.status).toBe(403);
+           expect(res.body.error).toBe('Código inválido ou expirado.');
+       });
+       it('deve retornar 403 e resposta genérica quando o código estiver expirado', async () => {
+           const rider = await createRider({ password: '123456' });
+           const code = '1234';
+           const pastDate = new Date(Date.now() - 60 * 60 * 1000); // 1 hora atrás
+           await Rider.findByIdAndUpdate(rider._id, { resetPasswordCodeExpiresAt: pastDate });
+           const res = await request(app)
+            .post('/api/riders/password/reset')
+            .send({email: rider.email, code: code, password: 'novaSenha123'});
+          
+           expect(res.status).toBe(403);
+           expect(res.body.error).toBe('Código inválido ou expirado.');
+       });
+       it('deve retornar 403 e resposta genérica quando o código de recuperação não tiver sido gerado', async () => {
+           const rider = await createRider({ password: '123456' });
+           const code = '1234';
+           await Rider.findByIdAndUpdate(rider._id, { resetPasswordCode: null, resetPasswordCodeExpiresAt: null });
+           const res = await request(app)
+            .post('/api/riders/password/reset')
+            .send({email: rider.email, code: code, password: 'novaSenha123'});
+          
+           expect(res.status).toBe(403);
+           expect(res.body.error).toBe('Código inválido ou expirado.');
+       });
+       it('deve retornar 403 e resposta genérica quando o código for inválido', async () => {
+           const rider = await createRider({ password: '123456' });
+           const invalidCode = '0000';
+           await Rider.findByIdAndUpdate(rider._id, { resetPasswordCode: null, resetPasswordCodeExpiresAt: null });
+           const res = await request(app)
+            .post('/api/riders/password/reset')
+            .send({email: rider.email, code: invalidCode, password: 'novaSenha123'});
+          
+           expect(res.status).toBe(403);
+           expect(res.body.error).toBe('Código inválido ou expirado.');
+       });
+      it('deve retornar 200, atualizar a senha e invalidar o código quando o código for válido', async () => {
+            const rider = await createRider({ password: '123456' });
+            const validCode = '9462';
+            const newPassword = 'novaSenha123';
+
+            await Rider.findByIdAndUpdate(rider._id, {
+              resetPasswordCode: validCode,
+              resetPasswordCodeExpiresAt: new Date(Date.now() + 15 * 60 * 1000),
+            });
+
+            const res = await request(app)
+              .post('/api/riders/password/reset')
+              .send({
+                email: rider.email,
+                code: validCode,
+                password: newPassword,
+              });
+
+            expect(res.status).toBe(200);
+            expect(res.body.message).toBe('Senha redefinida com sucesso.');
+
+            const updated = await Rider.findById(rider._id).select(
+              'password resetPasswordCode resetPasswordCodeExpiresAt'
+            );
+
+            // Senha realmente atualizada
+            const isMatch = await bcryptjs.compare(newPassword, updated.password);
+            expect(isMatch).toBe(true);
+
+            // Código invalidado
+            expect(updated.resetPasswordCode).toBeNull();
+            expect(updated.resetPasswordCodeExpiresAt).toBeNull();
+          });
+    });
 });
