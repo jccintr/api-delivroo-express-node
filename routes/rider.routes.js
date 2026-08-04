@@ -3,7 +3,7 @@ import { Router } from 'express';
 import * as RiderController from '../controllers/rider.controller.js';
 import AuthRider from '../middlewares/auth.rider.js';
 import {validate} from '../middlewares/validate.js'
-import { registerValidator, loginValidator,accountVerificationValidator } from '../validators/rider.validator.js';
+import { registerValidator, loginValidator,accountVerificationValidator,resetPasswordValidator } from '../validators/rider.validator.js';
 
 const router = Router();
 
@@ -13,7 +13,7 @@ router.post('/verify-account/resend',AuthRider,RiderController.resendAccountVeri
 router.post('/verify-account',AuthRider, accountVerificationValidator, validate,RiderController.verifyAccount);
 router.post('/password/request',RiderController.requestPasswordCode);
 router.post('/password/verify-code',RiderController.verifyPasswordCode);
-router.post('/password/reset',RiderController.resetPassword);
+router.post('/password/reset',resetPasswordValidator, validate, RiderController.resetPassword);
 
 router.get('/me', AuthRider, RiderController.validateToken);
 

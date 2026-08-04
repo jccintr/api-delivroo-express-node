@@ -247,6 +247,36 @@ export const verifyPasswordCode = async (req, res) => {
 };
 
 export const resetPassword = async (req, res) => {
-    const { email,code,password } = req.body;
-}
-  
+  try {
+    const { email, code, password } = req.body;
+
+    const rider = await Rider.findOne({ email }).select('email active password resetPasswordCode resetPasswordCodeExpiresAt' );
+
+    if (!rider || rider.active === false) {
+      return res.status(403).json({ error: 'Código inválido ou expirado.' });
+    }
+
+    const expired = !rider.resetPasswordCodeExpiresAt || rider.resetPasswordCodeExpiresAt < new Date();
+
+    if (!rider.resetPasswordCode || rider.resetPasswordCode !== code || expired ) {
+      return res.status(403).json({ error: 'Código inválido ou expirado.' });
+    }
+
+    // Atualiza a senha
+    const salt = await bcryptjs.genSalt(10);
+    rider.password = await bcryptjs.hash(password, salt);
+
+    // Invalida o código
+    rider.resetPasswordCode = null;
+    rider.resetPasswordCodeExpiresAt = null;
+
+    await rider.save();
+
+    return res.status(200).json({
+      message: 'Senha redefinida com sucesso.',
+    });
+  } catch (error) {
+    console.error('Erro no resetPassword:', error);
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};
