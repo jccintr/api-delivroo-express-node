@@ -1,10 +1,12 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach,vi } from 'vitest';
 import request from 'supertest';
 import app from '../app.js';
 import Rider from '../models/rider.js';
 import bcryptjs from 'bcryptjs';
 import jsonwebtoken from 'jsonwebtoken';
 import {createRider,createRiderWithToken} from './factories/rider.factory.js'
+// Mock the sendEmail function to avoid sending real emails during tests
+import * as sendEmail from '../utils/sendEmailV2.js';
 
 const riderPayload = {
   name: 'João Entregador',
@@ -20,10 +22,15 @@ describe('Rider Routes', () => {
   // =====================
   describe('POST /api/riders/register', () => {
     it('deve cadastrar um rider com sucesso', async () => {
+      vi.spyOn(sendEmail, 'sendRiderVerificationAccountEmail').mockResolvedValue({});
       const res = await request(app)
         .post('/api/riders/register')
         .send(riderPayload);
 
+      expect(sendEmail.sendRiderVerificationAccountEmail).toHaveBeenCalledWith(
+          res.body.rider.email,
+          expect.any(String)
+       );
       expect(res.status).toBe(201);
       expect(res.body.message).toBe('Conta criada com sucesso.');
       expect(res.body.rider).toBeDefined();
@@ -276,15 +283,25 @@ describe('Rider Routes', () => {
       expect(res.status).toBe(400);
       expect(res.body.error).toBe('Conta já verificada.');
     });
-     it('deve retornar 200 e reenviar o código de verificação quando o rider existir e não estiver verificado', async () => {
+     it('deve retornar 200, gerar um novo código de verificação e reenviar quando o rider existir e não estiver verificado', async () => {
        const {rider,token} = await createRiderWithToken({ password: '123456' });
-       const validCode = '1234';
-       await Rider.findByIdAndUpdate(rider._id, { emailVerificationCode: validCode });
+       const oldCode = '1234';
+       await Rider.findByIdAndUpdate(rider._id, { emailVerificationCode: oldCode });
+       vi.spyOn(sendEmail, 'sendRiderVerificationAccountEmail').mockResolvedValue({});
        const res = await request(app)
          .post('/api/riders/verify-account/resend')
          .set('Authorization', `Bearer ${token}`);
-     
+
+       const updated = await Rider.findById(rider._id).select('emailVerificationCode');
+
        expect(res.status).toBe(200);
+       expect(sendEmail.sendRiderVerificationAccountEmail).toHaveBeenCalledWith(
+          rider.email,
+          expect.any(String)
+       );
+       expect(updated.emailVerificationCode).toBeTruthy();
+       expect(updated.emailVerificationCode).not.toBe(oldCode);
+       expect(updated.emailVerificationCode).toHaveLength(4);
        expect(res.body.message).toBe('Código de verificação reenviado.');
      });
 
