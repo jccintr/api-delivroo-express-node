@@ -354,12 +354,73 @@ describe('Rider Routes', () => {
   // Verify Reset Password Code (POST /password/verify-code)
   // =====================
    describe('POST /api/riders/password/verify-code', () => {
-       it('deve retornar 403 e resposta genérica quando email não existir', async () => {});
-       it('deve retornar 403 e resposta genérica quando a conta estiver desativada', async () => {});
-       it('deve retornar 403 e resposta genérica quando o código estiver expirado', async () => {});
-       it('deve retornar 403 e resposta genérica quando o código de recuperação não tiver sido gerado', async () => {});
-       it('deve retornar 403 e resposta genérica quando o código for inválido', async () => {});
-       it('deve retornar 200 e resposta de sucesso quando o código for válido', async () => {});
+       it('deve retornar 403 e resposta genérica quando email não existir', async () => {
+          const rider = await createRider({ password: '123456' });
+          const code = '1234';
+          const nonExistingEmail = 'fake@gmail.com';
+          const res = await request(app)
+            .post('/api/riders/password/verify-code')
+            .send({email: nonExistingEmail, code: code});
+
+          expect(res.status).toBe(403);
+          expect(res.body.error).toBe('Código inválido ou expirado.');
+       });
+       it('deve retornar 403 e resposta genérica quando a conta estiver desativada', async () => {
+           const rider = await createRider({ password: '123456' });
+           const code = '1234';
+           await Rider.findByIdAndUpdate(rider._id, { active: false });
+           const res = await request(app)
+            .post('/api/riders/password/verify-code')
+            .send({email: rider.email,code: code});
+          
+           expect(res.status).toBe(403);
+           expect(res.body.error).toBe('Código inválido ou expirado.');
+       });
+       it('deve retornar 403 e resposta genérica quando o código estiver expirado', async () => {
+           const rider = await createRider({ password: '123456' });
+           const code = '1234';
+           const pastDate = new Date(Date.now() - 60 * 60 * 1000); // 1 hora atrás
+           await Rider.findByIdAndUpdate(rider._id, { resetPasswordCodeExpiresAt: pastDate });
+           const res = await request(app)
+            .post('/api/riders/password/verify-code')
+            .send({email: rider.email, code: code});
+          
+           expect(res.status).toBe(403);
+           expect(res.body.error).toBe('Código inválido ou expirado.');
+       });
+       it('deve retornar 403 e resposta genérica quando o código de recuperação não tiver sido gerado', async () => {
+           const rider = await createRider({ password: '123456' });
+           const code = '1234';
+           await Rider.findByIdAndUpdate(rider._id, { resetPasswordCode: null, resetPasswordCodeExpiresAt: null });
+           const res = await request(app)
+            .post('/api/riders/password/verify-code')
+            .send({email: rider.email, code: code});
+          
+           expect(res.status).toBe(403);
+           expect(res.body.error).toBe('Código inválido ou expirado.');
+       });
+       it('deve retornar 403 e resposta genérica quando o código for inválido', async () => {
+           const rider = await createRider({ password: '123456' });
+           const invalidCode = '0000';
+           await Rider.findByIdAndUpdate(rider._id, { resetPasswordCode: null, resetPasswordCodeExpiresAt: null });
+           const res = await request(app)
+            .post('/api/riders/password/verify-code')
+            .send({email: rider.email, code: invalidCode});
+          
+           expect(res.status).toBe(403);
+           expect(res.body.error).toBe('Código inválido ou expirado.');
+       });
+       it('deve retornar 200 e resposta de sucesso quando o código for válido', async () => {
+           const rider = await createRider({ password: '123456' });
+           const validCode = '9462';
+           await Rider.findByIdAndUpdate(rider._id, { resetPasswordCode: validCode, resetPasswordCodeExpiresAt:  new Date(Date.now() + 15 * 60 * 1000) });
+           const res = await request(app)
+            .post('/api/riders/password/verify-code')
+            .send({email: rider.email, code: validCode});
+          
+           expect(res.status).toBe(200);
+           expect(res.body.message).toBe('Código verificado com sucesso.');
+       });
 
 
    });
