@@ -350,4 +350,17 @@ describe('Rider Routes', () => {
           expect(res.body.message).toBe('Se este e-mail estiver cadastrado, enviaremos um código de verificação.');
      });
   });
+  // =====================
+  // Verify Reset Password Code (POST /password/verify-code)
+  // =====================
+   describe('POST /api/riders/password/verify-code', () => {
+       it('deve retornar 403 e resposta genérica quando email não existir', async () => {});
+       it('deve retornar 403 e resposta genérica quando a conta estiver desativada', async () => {});
+       it('deve retornar 403 e resposta genérica quando o código estiver expirado', async () => {});
+       it('deve retornar 403 e resposta genérica quando o código de recuperação não tiver sido gerado', async () => {});
+       it('deve retornar 403 e resposta genérica quando o código for inválido', async () => {});
+       it('deve retornar 200 e resposta de sucesso quando o código for válido', async () => {});
+
+
+   });
 });

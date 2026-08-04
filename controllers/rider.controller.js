@@ -220,8 +220,31 @@ export const requestPasswordCode = async (req, res) => {
 };
 
 export const verifyPasswordCode = async (req, res) => {
-   const { email,code } = req.body;
-}
+  try {
+    const { email, code } = req.body;
+
+    const rider = await Rider.findOne({ email }).select(
+      'email active resetPasswordCode resetPasswordCodeExpiresAt'
+    );
+
+    // Mesma mensagem genérica — não revela se o e-mail existe
+    if (!rider || rider.active === false) {
+      return res.status(403).json({ error: 'Código inválido ou expirado.' });
+    }
+
+    const expired = !rider.resetPasswordCodeExpiresAt || rider.resetPasswordCodeExpiresAt < new Date();
+
+    if (!rider.resetPasswordCode || rider.resetPasswordCode !== code || expired ) {
+      return res.status(403).json({ error: 'Código inválido ou expirado.' });
+    }
+
+    // Código válido — não invalida ainda (só no reset da senha)
+    return res.status(200).json({ message: 'Código verificado com sucesso.', });
+  } catch (error) {
+    console.error('Erro no verifyPasswordCode:', error);
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};
 
 export const resetPassword = async (req, res) => {
     const { email,code,password } = req.body;
