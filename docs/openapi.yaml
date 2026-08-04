@@ -76,7 +76,7 @@ paths:
       summary: Verificar conta do rider
       description: |
         Valida o código de verificação enviado por e-mail no cadastro.
-        Define `emailVerifiedAt` com a data/hora atual.
+        Define `emailVerifiedAt` com a data/hora atual e limpa `emailVerificationCode`.
         Requer autenticação (Bearer token).
       security:
         - bearerAuth: []
@@ -111,6 +111,138 @@ paths:
                 $ref: '#/components/schemas/Error'
               example:
                 error: Código de verificação inválido.
+        '500':
+          description: Erro interno do servidor
+
+  /riders/verify-account/resend:
+    post:
+      tags: [Riders]
+      summary: Reenviar código de verificação da conta
+      description: |
+        Gera um novo código de verificação e envia por e-mail.
+        Só funciona se a conta ainda não estiver verificada.
+        Requer autenticação (Bearer token).
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Código reenviado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              example:
+                message: Código de verificação reenviado.
+        '400':
+          description: Conta já verificada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Conta já verificada.
+        '401':
+          description: Não autorizado
+        '404':
+          description: Rider não encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Rider não encontrado.
+        '500':
+          description: Erro interno do servidor
+
+  /riders/password/request:
+    post:
+      tags: [Riders]
+      summary: Solicitar código de recuperação de senha
+      description: |
+        Se o e-mail estiver cadastrado e a conta ativa, gera um código,
+        define expiração (15 minutos) e envia por e-mail.
+        Sempre retorna a mesma mensagem genérica (não revela se o e-mail existe).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordRequest'
+      responses:
+        '200':
+          description: Resposta genérica (enviado ou não)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              example:
+                message: Se este e-mail estiver cadastrado, enviaremos um código de verificação.
+        '500':
+          description: Erro interno do servidor
+
+  /riders/password/verify-code:
+    post:
+      tags: [Riders]
+      summary: Verificar código de recuperação de senha
+      description: |
+        Valida o código de reset (e se ainda não expirou).
+        Não invalida o código — isso só ocorre no reset da senha.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordVerifyCode'
+      responses:
+        '200':
+          description: Código válido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              example:
+                message: Código verificado com sucesso.
+        '403':
+          description: Código inválido ou expirado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Código inválido ou expirado.
+        '500':
+          description: Erro interno do servidor
+
+  /riders/password/reset:
+    post:
+      tags: [Riders]
+      summary: Redefinir senha
+      description: |
+        Valida e-mail + código + expiração, atualiza a senha
+        e invalida `resetPasswordCode` / `resetPasswordCodeExpiresAt`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordReset'
+      responses:
+        '200':
+          description: Senha redefinida com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              example:
+                message: Senha redefinida com sucesso.
+        '403':
+          description: Código inválido ou expirado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Código inválido ou expirado.
         '500':
           description: Erro interno do servidor
 
@@ -464,6 +596,50 @@ components:
           minLength: 4
           maxLength: 4
 
+    PasswordRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+          example: joao@email.com
+
+    PasswordVerifyCode:
+      type: object
+      required: [email, code]
+      properties:
+        email:
+          type: string
+          format: email
+          example: joao@email.com
+        code:
+          type: string
+          description: Código de recuperação enviado por e-mail
+          example: "5048"
+          minLength: 4
+          maxLength: 4
+
+    PasswordReset:
+      type: object
+      required: [email, code, password]
+      properties:
+        email:
+          type: string
+          format: email
+          example: joao@email.com
+        code:
+          type: string
+          description: Código de recuperação enviado por e-mail
+          example: "5048"
+          minLength: 4
+          maxLength: 4
+        password:
+          type: string
+          minLength: 3
+          description: Nova senha
+          example: "novaSenha123"
+
     RiderProfile:
       type: object
       properties:
@@ -710,6 +886,13 @@ components:
           example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
     # ----- Common -----
+    MessageResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Operação realizada com sucesso.
+
     Error:
       type: object
       properties:
