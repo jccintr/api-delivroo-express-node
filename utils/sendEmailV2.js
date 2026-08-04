@@ -57,3 +57,8 @@ export const sendAccountVerifiedEmail = async (to) => {
   const html = loadTemplate('account-verified');
   return sendEmail(to, 'Conta ativada com sucesso — Delivroo Express', html);
 };
+
+export const sendRiderPasswordResetEmail = async (to, code) => {
+  const html = loadTemplate('password-reset', { CODE: code });
+  return sendEmail(to, 'Redefinição de senha — Delivroo Express', html);
+}

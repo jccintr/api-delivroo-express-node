@@ -306,4 +306,48 @@ describe('Rider Routes', () => {
      });
 
   });
+  // =====================
+  // Request Reset Password Code (POST /password/request)
+  // =====================
+  describe('POST /api/riders/password/request', () => {
+     it('deve retornar 200 e resposta genérica quando email não existir', async () => {
+          const rider = await createRider({ password: '123456' });
+          const nonExistingEmail = 'fake@gmail.com';
+          const res = await request(app)
+            .post('/api/riders/password/request')
+            .send({email: nonExistingEmail});
+
+          expect(res.status).toBe(200);
+          expect(res.body.message).toBe('Se este e-mail estiver cadastrado, enviaremos um código de verificação.');
+      });
+    it('deve retornar 200 e resposta genérica quando quando a conta estiver desativada', async () => {
+           const rider = await createRider({ password: '123456' });
+          
+           await Rider.findByIdAndUpdate(rider._id, { active: false });
+           const res = await request(app)
+            .post('/api/riders/password/request')
+            .send({email: rider.email});
+
+          expect(res.status).toBe(200);
+          expect(res.body.message).toBe('Se este e-mail estiver cadastrado, enviaremos um código de verificação.');
+    });
+     it('deve retornar 200, resposta genérica, gerar um novo código com prazo de expiração e enviar o email quando quando o email existir e a conta estiver ativada', async () => {
+         const rider = await createRider({ password: '123456' });
+         vi.spyOn(sendEmail, 'sendRiderPasswordResetEmail').mockResolvedValue({});
+         const res = await request(app)
+            .post('/api/riders/password/request')
+            .send({email: rider.email});
+
+        const updated = await Rider.findById(rider._id).select('resetPasswordCode resetPasswordCodeExpiresAt');
+
+          expect(res.status).toBe(200);
+          expect(updated.resetPasswordCode).toBeTruthy();
+          expect(updated.resetPasswordCodeExpiresAt).toBeTruthy();
+          expect(sendEmail.sendRiderPasswordResetEmail).toHaveBeenCalledWith(
+            rider.email,
+            expect.any(String)
+          );
+          expect(res.body.message).toBe('Se este e-mail estiver cadastrado, enviaremos um código de verificação.');
+     });
+  });
 });

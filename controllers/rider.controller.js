@@ -1,7 +1,7 @@
 import bcryptjs from 'bcryptjs';
 import jsonwebtoken from 'jsonwebtoken';
 import Rider from '../models/rider.js';
-import { generateVerificationCode,sendRiderVerificationAccountEmail,sendAccountVerifiedEmail }  from '../utils/sendEmailV2.js'
+import { generateVerificationCode,sendRiderVerificationAccountEmail,sendAccountVerifiedEmail,sendRiderPasswordResetEmail }  from '../utils/sendEmailV2.js'
 
 
 export const register = async (req, res) => {
@@ -174,4 +174,56 @@ export const resendAccountVerificationCode = async (req, res) => {
       return res.status(500).json({ error: 'Erro interno do servidor.' });
   }
 };
+
+export const requestPasswordCode = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    // Resposta genérica — não revela se o e-mail existe
+    const genericResponse = {
+      message: 'Se este e-mail estiver cadastrado, enviaremos um código de verificação.',
+    };
+
+    const rider = await Rider.findOne({ email }).select(
+      'email active resetPasswordCode resetPasswordCodeExpiresAt'
+    );
+
+    // E-mail não cadastrado: mesma resposta (não envia nada)
+    if (!rider) {
+      return res.status(200).json(genericResponse);
+    }
+
+    // Conta desativada: também não revela
+    if (rider.active === false) {
+      return res.status(200).json(genericResponse);
+    }
+
+    // Gera código e define expiração (15 minutos)
+    const code = generateVerificationCode();
+    rider.resetPasswordCode = code;
+    rider.resetPasswordCodeExpiresAt = new Date(Date.now() + 15 * 60 * 1000);
+    await rider.save();
+
+    // Envia e-mail (não bloqueia a resposta genérica se falhar — opcional)
+    try {
+      await sendRiderPasswordResetEmail(rider.email, code);
+    } catch (mailError) {
+      console.error('Erro ao enviar e-mail de recuperação:', mailError);
+      // Ainda retorna 200 para não vazar informação
+    }
+
+    return res.status(200).json(genericResponse);
+  } catch (error) {
+    console.error('Erro no requestPasswordCode:', error);
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};
+
+export const verifyPasswordCode = async (req, res) => {
+   const { email,code } = req.body;
+}
+
+export const resetPassword = async (req, res) => {
+    const { email,code,password } = req.body;
+}
   
