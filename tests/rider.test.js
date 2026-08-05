@@ -8,6 +8,7 @@ import {createRider,createRiderWithToken} from './factories/rider.factory.js'
 // Mock the sendEmail function to avoid sending real emails during tests
 import * as sendEmail from '../utils/sendEmailV2.js';
 import bcryptjs from 'bcryptjs';
+import cloudinary from '../utils/cloudinary.js';
 
 const riderPayload = {
   name: 'João Entregador',
@@ -518,4 +519,82 @@ describe('Rider Routes', () => {
             expect(updated.resetPasswordCodeExpiresAt).toBeNull();
           });
     });
+    // =====================
+  // Upload Avatar (PATCH /ma/avatar)
+  // =====================
+  describe('PATCH /api/riders/me/avatar', () => {
+    beforeEach(() => {
+            vi.mock('../utils/cloudinary.js', async () => {
+        const mock = await import('./mocks/cloudinary.js');
+        return { default: mock.default };
+      });
+    });
+    it('deve retornar 401 quando não autenticado (sem token)', async () => {
+      const res = await request(app).patch('/api/riders/me/avatar');
+      expect(res.status).toBe(401);
+      expect(res.body.error).toBe('Não autorizado');
+    });
+    it('deve retornar 400 quando nenhuma imagem for enviada', async () => {
+      const { token } = await createRiderWithToken();
+
+      const res = await request(app)
+        .patch('/api/riders/me/avatar')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('Nenhuma imagem enviada.');
+    });
+    it('deve rejeitar arquivo que não seja imagem', async () => {
+      const { token } = await createRiderWithToken();
+
+      const res = await request(app)
+        .patch('/api/riders/me/avatar')
+        .set('Authorization', `Bearer ${token}`)
+        .attach('avatar', Buffer.from('not-an-image'), 'file.txt');
+
+      expect([400, 500]).toContain(res.status);
+    });
+    it('deve retornar 200 e atualizar o avatar quando a imagem for válida', async () => {
+      const { rider, token } = await createRiderWithToken();
+
+      const pngBuffer = Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+        'base64'
+      );
+      const res = await request(app)
+        .patch('/api/riders/me/avatar')
+        .set('Authorization', `Bearer ${token}`)
+        .attach('avatar', pngBuffer, 'avatar.png');
+
+      expect(res.status).toBe(200);
+      expect(res.body.message).toBe('Avatar atualizado com sucesso.');
+      expect(res.body.avatar).toBe(
+        'https://res.cloudinary.com/demo/image/upload/v1/delivroo/riders/rider_test.jpg'
+      );
+
+      const updated = await Rider.findById(rider._id).select('avatar');
+      expect(updated.avatar).toBe(res.body.avatar);
+    });
+    it('deve retornar 500 quando o Cloudinary falhar', async () => {
+      cloudinary.uploader.upload_stream.mockImplementationOnce((options, callback) => {
+        return {
+          end: () => callback(new Error('Cloudinary error'), null),
+        };
+      });
+
+      const { token } = await createRiderWithToken();
+      const pngBuffer = Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+        'base64'
+      );
+
+      const res = await request(app)
+        .patch('/api/riders/me/avatar')
+        .set('Authorization', `Bearer ${token}`)
+        .attach('avatar', pngBuffer, 'avatar.png');
+
+      expect(res.status).toBe(500);
+    });
+  
+  });
 });
