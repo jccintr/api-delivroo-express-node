@@ -63,12 +63,71 @@ paths:
       responses:
         '200':
           description: Dados do rider
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RiderProfile'
         '401':
           description: Não autorizado
         '403':
           description: Conta desativada
         '404':
           description: Usuário não encontrado
+
+  /riders/me/avatar:
+    patch:
+      tags: [Riders]
+      summary: Atualizar avatar do rider
+      description: |
+        Envia uma imagem (JPEG, PNG ou WebP, máx. 2 MB) via multipart/form-data.
+        O arquivo é enviado ao Cloudinary (crop 400x400) e a URL é salva em `avatar`.
+        Campo do formulário: `avatar`.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [avatar]
+              properties:
+                avatar:
+                  type: string
+                  format: binary
+                  description: Arquivo de imagem (jpeg, png ou webp)
+      responses:
+        '200':
+          description: Avatar atualizado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AvatarUploadResponse'
+        '400':
+          description: Nenhuma imagem enviada, tipo inválido ou arquivo muito grande
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                missing:
+                  value:
+                    error: Nenhuma imagem enviada.
+                tooLarge:
+                  value:
+                    error: Imagem muito grande. Máximo 2 MB.
+        '401':
+          description: Não autorizado
+        '404':
+          description: Rider não encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Rider não encontrado.
+        '500':
+          description: Erro interno do servidor
 
   /riders/verify-account:
     post:
@@ -656,6 +715,11 @@ components:
         phone:
           type: string
           example: "11999999999"
+        avatar:
+          type: string
+          nullable: true
+          description: URL pública do avatar (Cloudinary)
+          example: "https://res.cloudinary.com/demo/image/upload/v1/delivroo/riders/rider_665f1a2b.jpg"
         active:
           type: boolean
           example: true
@@ -691,6 +755,17 @@ components:
         online:
           type: boolean
           example: false
+
+    AvatarUploadResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Avatar atualizado com sucesso.
+        avatar:
+          type: string
+          description: URL pública do avatar no Cloudinary
+          example: "https://res.cloudinary.com/demo/image/upload/v1/delivroo/riders/rider_665f1a2b.jpg"
 
     RiderActionResponse:
       type: object
