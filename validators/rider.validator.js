@@ -58,3 +58,19 @@ export const resetPasswordValidator = [
 
  
 ];
+
+export const updateProfileValidator = [
+  body('name')
+    .optional()
+    .trim()
+    .isLength({ min: 3 })
+    .withMessage('Nome deve ter pelo menos 3 caracteres.'),
+  body('phone')
+    .optional()
+    .trim()
+    .notEmpty()
+    .withMessage('Telefone inválido.'),
+  body('doc')
+    .optional({ nullable: true })
+    .trim(),
+];

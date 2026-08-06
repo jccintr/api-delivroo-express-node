@@ -333,3 +333,33 @@ export const uploadAvatar = async (req, res) => {
     return res.status(500).json({ error: 'Erro interno do servidor.' });
   }
 };
+
+export const updateProfile = async (req, res) => {
+  try {
+    const riderId = req.user?.id;
+    const { name, phone, doc } = req.body;
+
+    const rider = await Rider.findById(riderId).select(
+      'name email phone avatar doc active emailVerifiedAt accountApprovedAt vehicle online'
+    );
+
+    if (!rider) {
+      return res.status(404).json({ error: 'Rider não encontrado.' });
+    }
+
+    if (rider.active === false) {
+      return res.status(403).json({ error: 'Conta desativada.' });
+    }
+
+    if (name !== undefined) rider.name = name;
+    if (phone !== undefined) rider.phone = phone;
+    if (doc !== undefined) rider.doc = doc || null;
+
+    await rider.save();
+
+    return res.status(200).json(rider);
+  } catch (error) {
+    console.error('Erro no updateProfile:', error);
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};

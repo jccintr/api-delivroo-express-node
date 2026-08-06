@@ -597,4 +597,76 @@ describe('Rider Routes', () => {
     });
   
   });
+  // =====================
+  // Update Profile (PATCH /me)
+  // =====================
+  describe('PATCH /api/riders/me', () => {
+    it('deve retornar 401 quando não autenticado (sem token)', async () => {
+      const res = await request(app).patch('/api/riders/me');
+      expect(res.status).toBe(401);
+      expect(res.body.error).toBe('Não autorizado');
+    });
+    it('deve retornar 404 quando rider não existir', async () => {
+      const { rider,token } = await createRiderWithToken();
+      await Rider.findByIdAndDelete(rider._id);
+      const res = await request(app)
+        .patch('/api/riders/me')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'John Doe',phone: '1234567890' ,doc: '1234567890' });
+
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe('Rider não encontrado.');
+    });
+    it('deve retornar 400 quando nome tiver menos do que 3 caractres', async () => {
+      const { rider,token } = await createRiderWithToken();
+      const res = await request(app)
+        .patch('/api/riders/me')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'Jo',phone: '1234567890' ,doc: '1234567890' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('Dados inválidos');
+      expect(res.body.details).toBeInstanceOf(Array);
+      expect(res.body.details[0].message).toBe('Nome deve ter pelo menos 3 caracteres.');
+    });
+    it('deve retornar 400 quando phone estiver em branco', async () => {
+      const { rider,token } = await createRiderWithToken();
+      const res = await request(app)
+        .patch('/api/riders/me')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'John Doe',phone: '' ,doc: '1234567890' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('Dados inválidos');
+      expect(res.body.details).toBeInstanceOf(Array);
+      expect(res.body.details[0].message).toBe('Telefone inválido.');
+    });
+    it('deve retornar 403 quando a conta estiver desativada', async () => {
+      const { rider,token } = await createRiderWithToken();
+      await Rider.findByIdAndUpdate(rider._id, { active: false });
+      const res = await request(app)
+        .patch('/api/riders/me')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'John Doe',phone: '3534567890' ,doc: '1234567890' });
+
+      expect(res.status).toBe(403);
+      expect(res.body.error).toBe('Conta desativada.');
+    });
+     it('deve retornar 200, atualizar o rider e retornar o rider atualizado quando rider existir e os dados forem validos', async () => { 
+      const { rider,token } = await createRiderWithToken();
+      
+      const res = await request(app)
+        .patch('/api/riders/me')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'John Doe',phone: '3534567890' ,doc: '1234567890' });
+      const updated = await Rider.findById(rider._id);
+      expect(res.status).toBe(200);
+      expect(res.body.name).toBe(updated.name);
+      expect(res.body.phone).toBe(updated.phone);
+      expect(res.body.doc).toBe(updated.doc);
+      expect(res.body.emailVerificationCode).toBeUndefined();
+      expect(res.body.resetPasswordCode).toBeUndefined();
+      expect(res.body.password).toBeUndefined();
+     });
+  });
 });

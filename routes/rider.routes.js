@@ -3,7 +3,7 @@ import { Router } from 'express';
 import * as RiderController from '../controllers/rider.controller.js';
 import AuthRider from '../middlewares/auth.rider.js';
 import {validate} from '../middlewares/validate.js'
-import { registerValidator, loginValidator,accountVerificationValidator,resetPasswordValidator } from '../validators/rider.validator.js';
+import { registerValidator, loginValidator,accountVerificationValidator,resetPasswordValidator,updateProfileValidator } from '../validators/rider.validator.js';
 import { uploadAvatar as uploadMiddleware } from '../middlewares/upload.avatar.js';
 
 const router = Router();
@@ -15,14 +15,9 @@ router.post('/verify-account',AuthRider, accountVerificationValidator, validate,
 router.post('/password/request',RiderController.requestPasswordCode);
 router.post('/password/verify-code',RiderController.verifyPasswordCode);
 router.post('/password/reset',resetPasswordValidator, validate, RiderController.resetPassword);
-router.patch(
-  '/me/avatar',
-  AuthRider,
-  uploadMiddleware.single('avatar'),
-  RiderController.uploadAvatar
-);
-
 router.get('/me', AuthRider, RiderController.validateToken);
+router.patch('/me',AuthRider,updateProfileValidator,validate,RiderController.updateProfile);
+router.patch('/me/avatar', AuthRider,uploadMiddleware.single('avatar'),RiderController.uploadAvatar);
 
 export default router;
 
