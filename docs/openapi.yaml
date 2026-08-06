@@ -74,6 +74,49 @@ paths:
         '404':
           description: Usuário não encontrado
 
+    patch:
+      tags: [Riders]
+      summary: Atualizar perfil do rider
+      description: |
+        Atualiza `name`, `phone` e/ou `doc` do rider autenticado.
+        Envie apenas os campos que deseja alterar.
+        Retorna o rider completo (mesmo formato do GET /riders/me).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RiderUpdateProfile'
+      responses:
+        '200':
+          description: Perfil atualizado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RiderProfile'
+        '401':
+          description: Não autorizado
+        '403':
+          description: Conta desativada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Conta desativada.
+        '404':
+          description: Rider não encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Rider não encontrado.
+        '500':
+          description: Erro interno do servidor
+
   /riders/me/avatar:
     patch:
       tags: [Riders]
@@ -644,6 +687,22 @@ components:
           type: string
           example: "123456"
 
+    RiderUpdateProfile:
+      type: object
+      description: Envie apenas os campos que deseja alterar
+      properties:
+        name:
+          type: string
+          minLength: 2
+          example: João Entregador
+        phone:
+          type: string
+          example: "11999998888"
+        doc:
+          type: string
+          nullable: true
+          example: "12345678900"
+
     RiderVerifyAccount:
       type: object
       required: [code]
@@ -720,6 +779,10 @@ components:
           nullable: true
           description: URL pública do avatar (Cloudinary)
           example: "https://res.cloudinary.com/demo/image/upload/v1/delivroo/riders/rider_665f1a2b.jpg"
+        doc:
+          type: string
+          nullable: true
+          example: "12345678900"
         active:
           type: boolean
           example: true
