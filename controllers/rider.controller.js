@@ -363,3 +363,34 @@ export const updateProfile = async (req, res) => {
     return res.status(500).json({ error: 'Erro interno do servidor.' });
   }
 };
+
+export const toggleOnlineStatus = async (req, res) => {
+  try {
+    const riderId = req.user?.id;
+
+    const rider = await Rider.findById(riderId).select(
+      'name email phone avatar doc active emailVerifiedAt accountApprovedAt vehicle online'
+    );
+
+    if (!rider) {
+      return res.status(404).json({ error: 'Rider não encontrado.' });
+    }
+
+    if (rider.active === false) {
+      return res.status(403).json({ error: 'Conta desativada.' });
+    }
+
+    
+     if (!rider.emailVerifiedAt) {
+       return res.status(403).json({ error: 'Verifique seu e-mail antes de ficar online.' });
+     }
+
+    rider.online = !rider.online;
+    await rider.save();
+
+    return res.status(200).json(rider);
+  } catch (error) {
+    console.error('Erro no toggleOnlineStatus:', error);
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};

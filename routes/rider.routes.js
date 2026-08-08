@@ -18,6 +18,7 @@ router.post('/password/reset',resetPasswordValidator, validate, RiderController.
 router.get('/me', AuthRider, RiderController.validateToken);
 router.patch('/me',AuthRider,updateProfileValidator,validate,RiderController.updateProfile);
 router.patch('/me/avatar', AuthRider,uploadMiddleware.single('avatar'),RiderController.uploadAvatar);
+router.patch('/me/status', AuthRider,RiderController.toggleOnlineStatus);
 
 export default router;
 
