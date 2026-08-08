@@ -669,4 +669,55 @@ describe('Rider Routes', () => {
       expect(res.body.password).toBeUndefined();
      });
   });
+   // =====================
+  // Toggle Status (PATCH /me/status)
+  // =====================
+   describe('PATCH /api/riders/me/status', () => {
+       it('deve retornar 401 quando não autenticado (sem token)', async () => {
+           const res = await request(app).patch('/api/riders/me/status');
+           expect(res.status).toBe(401);
+           expect(res.body.error).toBe('Não autorizado');
+       });
+       it('deve retornar 404 quando rider não existir', async () => {
+        const { rider,token } = await createRiderWithToken();
+        await Rider.findByIdAndDelete(rider._id);
+        const res = await request(app)
+          .patch('/api/riders/me/status')
+          .set('Authorization', `Bearer ${token}`);
+
+        expect(res.status).toBe(404);
+        expect(res.body.error).toBe('Rider não encontrado.');
+      });
+      it('deve retornar 403 quando a conta estiver desativada', async () => {
+          const { rider,token } = await createRiderWithToken();
+          await Rider.findByIdAndUpdate(rider._id, { active: false });
+          const res = await request(app)
+            .patch('/api/riders/me/status')
+            .set('Authorization', `Bearer ${token}`);
+
+          expect(res.status).toBe(403);
+          expect(res.body.error).toBe('Conta desativada.');
+      });
+       it('deve retornar 403 quando a conta não estiver verificada', async () => {
+          const { rider,token } = await createRiderWithToken();
+          await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: null });
+          const res = await request(app)
+            .patch('/api/riders/me/status')
+            .set('Authorization', `Bearer ${token}`);
+
+          expect(res.status).toBe(403);
+          expect(res.body.error).toBe('Conta não verificada.');
+       });
+       it('deve retornar 200, quando rider existir, a conta estiver verificada e a conta estiver ativa', async () => {
+          const { rider,token } = await createRiderWithToken();
+           await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(),active: true });
+          const res = await request(app)
+            .patch('/api/riders/me/status')
+            .set('Authorization', `Bearer ${token}`);
+          const updated = await Rider.findById(rider._id);
+          expect(res.status).toBe(200);
+          expect(res.body.active).toBe(updated.active);
+       });
+
+   });
 });

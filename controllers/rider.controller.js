@@ -382,7 +382,7 @@ export const toggleOnlineStatus = async (req, res) => {
 
     
      if (!rider.emailVerifiedAt) {
-       return res.status(403).json({ error: 'Verifique seu e-mail antes de ficar online.' });
+       return res.status(403).json({ error: 'Conta não verificada.' });
      }
 
     rider.online = !rider.online;
