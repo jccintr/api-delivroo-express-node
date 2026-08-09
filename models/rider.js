@@ -113,6 +113,11 @@ const riderSchema = new mongoose.Schema({
       required:false,
       default:null
   },
+  documentImage: {
+    type: String,
+    required: false,
+    default: null
+  },
   
 }, { timestamps: true });
 

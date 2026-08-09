@@ -394,3 +394,55 @@ export const toggleOnlineStatus = async (req, res) => {
     return res.status(500).json({ error: 'Erro interno do servidor.' });
   }
 };
+
+export const uploadDocument = async (req, res) => {
+  try {
+    const riderId = req.user?.id;
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'Nenhuma imagem enviada.' });
+    }
+
+    const rider = await Rider.findById(riderId).select('documentImage');
+    if (!rider) {
+      return res.status(404).json({ error: 'Rider não encontrado.' });
+    }
+
+    // Remove avatar antigo no Cloudinary (se existir public_id salvo)
+    // Opcional: se você guardar avatarPublicId no model
+
+    const result = await new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        {
+          folder: 'delivroo/riders',
+          public_id: `rider_${riderId}`,
+          overwrite: true,
+          transformation: [
+            { width: 400, height: 400, crop: 'fill', gravity: 'face' },
+            { quality: 'auto', fetch_format: 'auto' },
+          ],
+        },
+        (error, result) => {
+          if (error) reject(error);
+          else resolve(result);
+        }
+      );
+
+      uploadStream.end(req.file.buffer);
+    });
+
+    rider.avatar = result.secure_url;
+    await rider.save();
+
+    return res.status(200).json({
+      message: 'Documento atualizado com sucesso.',
+      documentImage: result.secure_url,
+    });
+  } catch (error) {
+    console.error('Erro no uploadAvatar:', error);
+    if (error.message?.includes('File too large')) {
+      return res.status(400).json({ error: 'Imagem muito grande. Máximo 2 MB.' });
+    }
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};
