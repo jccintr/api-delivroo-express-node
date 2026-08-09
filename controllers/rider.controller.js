@@ -431,7 +431,7 @@ export const uploadDocument = async (req, res) => {
       uploadStream.end(req.file.buffer);
     });
 
-    rider.avatar = result.secure_url;
+    rider.documentImage = result.secure_url;
     await rider.save();
 
     return res.status(200).json({
