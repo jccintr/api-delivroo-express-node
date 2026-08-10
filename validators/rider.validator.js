@@ -74,3 +74,9 @@ export const updateProfileValidator = [
     .optional({ nullable: true })
     .trim(),
 ];
+
+export const updateVehicleValidator = [
+ 
+   body('vehicleType')
+   .isIn(['Carro', 'Moto', 'Bicicleta']).withMessage('Tipo de veículo inválido. Deve ser Carro, Moto ou Bicicleta'),
+];

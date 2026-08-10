@@ -446,3 +446,51 @@ export const uploadDocument = async (req, res) => {
     return res.status(500).json({ error: 'Erro interno do servidor.' });
   }
 };
+
+export const updateVehicle = async (req, res) => {
+  try {
+    const riderId = req.user?.id;
+    const { vehicleType, model, color, plate } = req.body;
+
+    const rider = await Rider.findById(riderId).select(
+      'name email phone avatar doc active emailVerifiedAt accountApprovedAt vehicle online'
+    );
+
+    if (!rider) {
+      return res.status(404).json({ error: 'Rider não encontrado.' });
+    }
+
+    if (rider.active === false) {
+      return res.status(403).json({ error: 'Conta desativada.' });
+    }
+
+    /*
+    const allowedTypes = ['Carro', 'Moto', 'Bicicleta'];
+
+    if (vehicleType !== undefined) {
+      if (!allowedTypes.includes(vehicleType)) {
+        return res.status(400).json({
+          error: 'Tipo de veículo inválido. Use: Carro, Moto ou Bicicleta.',
+        });
+      }
+      rider.vehicle.type = vehicleType;
+    }
+*/
+    rider.vehicle.type = vehicleType;
+    if (model !== undefined) rider.vehicle.model = model || null;
+    if (color !== undefined) rider.vehicle.color = color || null;
+    if (plate !== undefined) rider.vehicle.plate = plate || null;
+
+    // Bicicleta: limpa placa se o tipo for bicicleta
+    if (rider.vehicle.type === 'Bicicleta') {
+      rider.vehicle.plate = null;
+    }
+
+    await rider.save();
+
+    return res.status(200).json(rider);
+  } catch (error) {
+    console.error('Erro no updateVehicle:', error);
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};

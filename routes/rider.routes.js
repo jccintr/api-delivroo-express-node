@@ -3,7 +3,7 @@ import { Router } from 'express';
 import * as RiderController from '../controllers/rider.controller.js';
 import AuthRider from '../middlewares/auth.rider.js';
 import {validate} from '../middlewares/validate.js'
-import { registerValidator, loginValidator,accountVerificationValidator,resetPasswordValidator,updateProfileValidator } from '../validators/rider.validator.js';
+import { registerValidator, loginValidator,accountVerificationValidator,resetPasswordValidator,updateProfileValidator,updateVehicleValidator } from '../validators/rider.validator.js';
 import { uploadAvatar as uploadMiddleware } from '../middlewares/upload.avatar.js';
 
 const router = Router();
@@ -20,6 +20,7 @@ router.patch('/me',AuthRider,updateProfileValidator,validate,RiderController.upd
 router.patch('/me/avatar', AuthRider,uploadMiddleware.single('avatar'),RiderController.uploadAvatar);
 router.patch('/me/document', AuthRider,uploadMiddleware.single('document'),RiderController.uploadDocument);
 router.patch('/me/status', AuthRider,RiderController.toggleOnlineStatus);
+router.patch('/me/vehicle',AuthRider,updateVehicleValidator, validate,RiderController.updateVehicle);
 
 export default router;
 
