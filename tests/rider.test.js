@@ -798,4 +798,68 @@ describe('Rider Routes', () => {
     });
   
   });
+    // =====================
+  // Upload Rider Vehicle (PATCH /me/vehicle)
+  // =====================
+  describe('PATCH /api/riders/me/vehicle', () => {
+     it('deve retornar 401 quando não autenticado (sem token)', async () => {
+           const res = await request(app).patch('/api/riders/me/vehicle');
+           expect(res.status).toBe(401);
+           expect(res.body.error).toBe('Não autorizado');
+       });
+     it('deve retornar 404 quando rider não existir', async () => {
+        const { rider,token } = await createRiderWithToken();
+        await Rider.findByIdAndDelete(rider._id);
+        const res = await request(app)
+          .patch('/api/riders/me/vehicle')
+          .set('Authorization', `Bearer ${token}`)
+          .send({ vehicleType: 'Moto',model: 'Ninja' ,color: 'Preto',plate: 'ABC1234' });
+
+        expect(res.status).toBe(404);
+        expect(res.body.error).toBe('Rider não encontrado.');
+      });
+      it('deve retornar 403 quando a conta estiver desativada', async () => {
+          const { rider,token } = await createRiderWithToken();
+          await Rider.findByIdAndUpdate(rider._id, { active: false });
+          const res = await request(app)
+            .patch('/api/riders/me/vehicle')
+            .set('Authorization', `Bearer ${token}`)
+            .send({ vehicleType: 'Moto',model: 'Ninja' ,color: 'Preto',plate: 'ABC1234' });
+
+          expect(res.status).toBe(403);
+          expect(res.body.error).toBe('Conta desativada.');
+      });
+       it('deve retornar 200, atualizar o veículo e anular a placa e retornar o Rider quando o tipo for Bicicleta', async () => {
+           const { rider,token } = await createRiderWithToken();
+           const res = await request(app)
+            .patch('/api/riders/me/vehicle')
+            .set('Authorization', `Bearer ${token}`)
+            .send({ vehicleType: 'Bicicleta',model: 'BMX' ,color: 'Prateada',plate: 'ABC1234' });
+
+           const updated = await Rider.findById(rider._id);
+           expect(res.status).toBe(200);
+           expect(res.body.name).toBe(updated.name);
+           expect(res.body.vehicle.type).toBe(updated.vehicle.type);
+           expect(res.body.vehicle.model).toBe(updated.vehicle.model);
+           expect(res.body.vehicle.color).toBe(updated.vehicle.color);
+           expect(res.body.vehicle.plate).toBeNull();
+       });
+
+        it('deve retornar 200, atualizar o veículo e retornar o Rider quando os dados forem válidos', async () => {
+           const { rider,token } = await createRiderWithToken();
+           const res = await request(app)
+            .patch('/api/riders/me/vehicle')
+            .set('Authorization', `Bearer ${token}`)
+            .send({ vehicleType: 'Moto',model: 'CB 500' ,color: 'Vermelha',plate: 'ABC1234' });
+
+           const updated = await Rider.findById(rider._id);
+           expect(res.status).toBe(200);
+           expect(res.body.name).toBe(updated.name);
+           expect(res.body.vehicle.type).toBe(updated.vehicle.type);
+           expect(res.body.vehicle.model).toBe(updated.vehicle.model);
+           expect(res.body.vehicle.color).toBe(updated.vehicle.color);
+           expect(res.body.vehicle.plate).toBe(updated.vehicle.plate);
+       });
+
+  });
 });

@@ -464,18 +464,7 @@ export const updateVehicle = async (req, res) => {
       return res.status(403).json({ error: 'Conta desativada.' });
     }
 
-    /*
-    const allowedTypes = ['Carro', 'Moto', 'Bicicleta'];
-
-    if (vehicleType !== undefined) {
-      if (!allowedTypes.includes(vehicleType)) {
-        return res.status(400).json({
-          error: 'Tipo de veículo inválido. Use: Carro, Moto ou Bicicleta.',
-        });
-      }
-      rider.vehicle.type = vehicleType;
-    }
-*/
+    
     rider.vehicle.type = vehicleType;
     if (model !== undefined) rider.vehicle.model = model || null;
     if (color !== undefined) rider.vehicle.color = color || null;
