@@ -59,7 +59,7 @@ export const login = async (req, res) => {
     const { email, password } = req.body;
 
     const rider = await Rider.findOne({ email }).select(
-      'name email phone password avatar doc active emailVerifiedAt accountApprovedAt vehicle online'
+      'name email phone password avatar doc active emailVerifiedAt accountApprovedAt vehicle online documentImage'
     );
 
     if (!rider) {
@@ -101,7 +101,7 @@ export const validateToken = async (req, res) => {
     const riderId = req.user?.id || req.body.riderId;
 
     const rider = await Rider.findById(riderId).select(
-      'name email phone avatar doc active emailVerifiedAt accountApprovedAt vehicle online'
+      'name email phone avatar doc active emailVerifiedAt accountApprovedAt vehicle online documentImage'
     );
 
     if (!rider) {
@@ -126,7 +126,7 @@ export const verifyAccount = async (req,res) => {
         const riderId = req.user?.id
         const {code} = req.body;
        
-        const rider = await Rider.findById(riderId).select('name email phone avatar doc active accountApprovedAt vehicle online emailVerificationCode emailVerifiedAt');
+        const rider = await Rider.findById(riderId).select('name email phone avatar doc active accountApprovedAt vehicle online emailVerificationCode emailVerifiedAt documentImage');
         if(rider.emailVerifiedAt){
             return res.status(400).json({error:'Conta já verificada.'});
         }
@@ -340,7 +340,7 @@ export const updateProfile = async (req, res) => {
     const { name, phone, doc } = req.body;
 
     const rider = await Rider.findById(riderId).select(
-      'name email phone avatar doc active emailVerifiedAt accountApprovedAt vehicle online'
+      'name email phone avatar doc active emailVerifiedAt accountApprovedAt vehicle online documentImage'
     );
 
     if (!rider) {
@@ -369,7 +369,7 @@ export const toggleOnlineStatus = async (req, res) => {
     const riderId = req.user?.id;
 
     const rider = await Rider.findById(riderId).select(
-      'name email phone avatar doc active emailVerifiedAt accountApprovedAt vehicle online'
+      'name email phone avatar doc active emailVerifiedAt accountApprovedAt vehicle online documentImage'
     );
 
     if (!rider) {
@@ -453,7 +453,7 @@ export const updateVehicle = async (req, res) => {
     const { vehicleType, model, color, plate } = req.body;
 
     const rider = await Rider.findById(riderId).select(
-      'name email phone avatar doc active emailVerifiedAt accountApprovedAt vehicle online'
+      'name email phone avatar doc active emailVerifiedAt accountApprovedAt vehicle online documentImage'
     );
 
     if (!rider) {
