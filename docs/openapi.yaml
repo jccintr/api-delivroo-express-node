@@ -114,6 +114,8 @@ paths:
                 $ref: '#/components/schemas/Error'
               example:
                 error: Rider não encontrado.
+        '422':
+          description: Dados inválidos (validação)
         '500':
           description: Erro interno do servidor
 
@@ -169,6 +171,146 @@ paths:
                 $ref: '#/components/schemas/Error'
               example:
                 error: Rider não encontrado.
+        '500':
+          description: Erro interno do servidor
+
+  /riders/me/document:
+    patch:
+      tags: [Riders]
+      summary: Enviar/atualizar documento do rider (CNH ou RG)
+      description: |
+        Envia uma imagem do documento (JPEG, PNG ou WebP, máx. 2 MB) via multipart/form-data.
+        O arquivo é enviado ao Cloudinary e a URL é salva em `documentImage`.
+        Campo do formulário: `document`.
+        Usado no fluxo de aprovação manual da conta.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [document]
+              properties:
+                document:
+                  type: string
+                  format: binary
+                  description: Foto do documento (CNH ou RG)
+      responses:
+        '200':
+          description: Documento atualizado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentUploadResponse'
+        '400':
+          description: Nenhuma imagem enviada, tipo inválido ou arquivo muito grande
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                missing:
+                  value:
+                    error: Nenhuma imagem enviada.
+                tooLarge:
+                  value:
+                    error: Imagem muito grande. Máximo 2 MB.
+        '401':
+          description: Não autorizado
+        '404':
+          description: Rider não encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Rider não encontrado.
+        '500':
+          description: Erro interno do servidor
+
+  /riders/me/vehicle:
+    patch:
+      tags: [Riders]
+      summary: Atualizar dados do veículo do rider
+      description: |
+        Atualiza `type`, `model`, `color` e/ou `plate` do veículo.
+        Campo no body: `vehicleType` (mapeado para `vehicle.type`).
+        Se o tipo for Bicicleta, a placa é limpa automaticamente.
+        Retorna o rider completo.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RiderUpdateVehicle'
+      responses:
+        '200':
+          description: Veículo atualizado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RiderProfile'
+        '401':
+          description: Não autorizado
+        '403':
+          description: Conta desativada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Conta desativada.
+        '404':
+          description: Rider não encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Rider não encontrado.
+        '422':
+          description: Dados inválidos (validação)
+        '500':
+          description: Erro interno do servidor
+
+  /riders/me/status:
+    patch:
+      tags: [Riders]
+      summary: Alternar status online/offline do rider
+      description: |
+        Toggle do campo `online`. Sem body.
+        Requer conta ativa e e-mail verificado.
+        Retorna o rider completo.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Status alternado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RiderProfile'
+        '401':
+          description: Não autorizado
+        '403':
+          description: Conta desativada ou não verificada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                inactive:
+                  value:
+                    error: Conta desativada.
+                unverified:
+                  value:
+                    error: Conta não verificada.
+        '404':
+          description: Rider não encontrado
         '500':
           description: Erro interno do servidor
 
@@ -703,6 +845,29 @@ components:
           nullable: true
           example: "12345678900"
 
+    RiderUpdateVehicle:
+      type: object
+      required: [vehicleType]
+      properties:
+        vehicleType:
+          type: string
+          enum: [Carro, Moto, Bicicleta]
+          description: Tipo do veículo (salvo em vehicle.type)
+          example: Moto
+        model:
+          type: string
+          nullable: true
+          example: Honda CG 160
+        color:
+          type: string
+          nullable: true
+          example: Vermelha
+        plate:
+          type: string
+          nullable: true
+          description: Placa (ignorada/limpa se tipo for Bicicleta)
+          example: ABC1D23
+
     RiderVerifyAccount:
       type: object
       required: [code]
@@ -779,6 +944,11 @@ components:
           nullable: true
           description: URL pública do avatar (Cloudinary)
           example: "https://res.cloudinary.com/demo/image/upload/v1/delivroo/riders/rider_665f1a2b.jpg"
+        documentImage:
+          type: string
+          nullable: true
+          description: URL da foto do documento (CNH/RG)
+          example: "https://res.cloudinary.com/demo/image/upload/v1/delivroo/riders/rider_665f1a2b.jpg"
         doc:
           type: string
           nullable: true
@@ -828,6 +998,17 @@ components:
         avatar:
           type: string
           description: URL pública do avatar no Cloudinary
+          example: "https://res.cloudinary.com/demo/image/upload/v1/delivroo/riders/rider_665f1a2b.jpg"
+
+    DocumentUploadResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Documento atualizado com sucesso.
+        documentImage:
+          type: string
+          description: URL pública do documento no Cloudinary
           example: "https://res.cloudinary.com/demo/image/upload/v1/delivroo/riders/rider_665f1a2b.jpg"
 
     RiderActionResponse:
