@@ -253,6 +253,7 @@ describe('Admin Routes', () => {
             phone: '11999999999',
             vehicle: { type: 'Moto' },
             accountApprovedAt: new Date(),
+            documentImage: 'https://res.cloudinary.com/demo/image/upload/v1/delivroo/riders/rider_test.jpg'
           };
           const approvedRider = await Rider.create(approvedRiderPayload);
           approvedRiderId = approvedRider._id;
@@ -268,6 +269,15 @@ describe('Admin Routes', () => {
          expect(res.status).toBe(404);
          expect(res.body.error).toBe('Entregador não encontrado.');
       });
+      it('deve retordar status 400 e não aprovar o rider quando a imagem do documento não tiver sido enviada', async () => {
+           const { token } = await createAdminWithToken();
+           const res = await request(app)
+           .patch(`/api/admin/riders/${newRiderId}/approve`)
+           .set('Authorization', `Bearer ${token}`);
+
+           expect(res.status).toBe(400);
+           expect(res.body.error).toBe('Documento ainda não enviado.');
+      });
       it('deve retordar status 400 quando o Rider já tenha sido aprovado anteriormente', async () => {
          const { token } = await createAdminWithToken();
          const res = await request(app)
@@ -279,6 +289,7 @@ describe('Admin Routes', () => {
       });
       it('deve retordar status 200 e Rider data quando a conta for aprovada com sucesso', async () => {
          const { token } = await createAdminWithToken();
+         await Rider.findByIdAndUpdate(newRiderId, { documentImage: 'https://res.cloudinary.com/demo/image/upload/v1/delivroo/riders/rider_test.jpg' });
          const res = await request(app)
          .patch(`/api/admin/riders/${newRiderId}/approve`)
          .set('Authorization', `Bearer ${token}`);

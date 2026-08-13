@@ -145,6 +145,10 @@ export const approveRider = async (req, res) => {
       return res.status(404).json({ error: 'Entregador não encontrado.' });
     }
 
+    if (!rider.documentImage) {
+      return res.status(400).json({ error: 'Documento ainda não enviado.' });
+    }
+
     if (rider.accountApprovedAt) {
       return res.status(400).json({ error: 'Conta já aprovada.' });
     }
