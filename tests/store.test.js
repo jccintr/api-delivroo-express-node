@@ -287,5 +287,78 @@ describe('Store Routes', () => {
             );
             expect(res.body.message).toBe('Se este e-mail estiver cadastrado, enviaremos um código de verificação.');
        });
-    });
+  });
+   // =====================
+    // Verify Reset Password Code (POST /password/verify-code)
+    // =====================
+     describe('POST /api/stores/password/verify-code', () => {
+         it('deve retornar 403 e resposta genérica quando email não existir', async () => {
+            const store = await createStore({ password: '123456' });
+            const code = '1234';
+            const nonExistingEmail = 'fake@gmail.com';
+            const res = await request(app)
+              .post('/api/stores/password/verify-code')
+              .send({email: nonExistingEmail, code: code});
+  
+            expect(res.status).toBe(403);
+            expect(res.body.error).toBe('Código inválido ou expirado.');
+         });
+         it('deve retornar 403 e resposta genérica quando a conta estiver desativada', async () => {
+             const store = await createStore({ password: '123456' });
+             const code = '1234';
+             await Store.findByIdAndUpdate(store._id, { active: false });
+             const res = await request(app)
+              .post('/api/stores/password/verify-code')
+              .send({email: store.email,code: code});
+            
+             expect(res.status).toBe(403);
+             expect(res.body.error).toBe('Código inválido ou expirado.');
+         });
+         it('deve retornar 403 e resposta genérica quando o código estiver expirado', async () => {
+             const store = await createStore({ password: '123456' });
+             const code = '1234';
+             const pastDate = new Date(Date.now() - 60 * 60 * 1000); // 1 hora atrás
+             await Store.findByIdAndUpdate(store._id, { resetPasswordCodeExpiresAt: pastDate });
+             const res = await request(app)
+              .post('/api/stores/password/verify-code')
+              .send({email: store.email, code: code});
+            
+             expect(res.status).toBe(403);
+             expect(res.body.error).toBe('Código inválido ou expirado.');
+         });
+         it('deve retornar 403 e resposta genérica quando o código de recuperação não tiver sido gerado', async () => {
+             const store = await createStore({ password: '123456' });
+             const code = '1234';
+             await Store.findByIdAndUpdate(store._id, { resetPasswordCode: null, resetPasswordCodeExpiresAt: null });
+             const res = await request(app)
+              .post('/api/stores/password/verify-code')
+              .send({email: store.email, code: code});
+            
+             expect(res.status).toBe(403);
+             expect(res.body.error).toBe('Código inválido ou expirado.');
+         });
+         it('deve retornar 403 e resposta genérica quando o código for inválido', async () => {
+             const store = await createStore({ password: '123456' });
+             const invalidCode = '0000';
+             await Store.findByIdAndUpdate(store._id, { resetPasswordCode: null, resetPasswordCodeExpiresAt: null });
+             const res = await request(app)
+              .post('/api/stores/password/verify-code')
+              .send({email: store.email, code: invalidCode});
+            
+             expect(res.status).toBe(403);
+             expect(res.body.error).toBe('Código inválido ou expirado.');
+         });
+         it('deve retornar 200 e resposta de sucesso quando o código for válido', async () => {
+             const store = await createStore({ password: '123456' });
+             const validCode = '9462';
+             await Store.findByIdAndUpdate(store._id, { resetPasswordCode: validCode, resetPasswordCodeExpiresAt:  new Date(Date.now() + 15 * 60 * 1000) });
+             const res = await request(app)
+              .post('/api/stores/password/verify-code')
+              .send({email: store.email, code: validCode});
+            
+             expect(res.status).toBe(200);
+             expect(res.body.message).toBe('Código verificado com sucesso.');
+         });
+  
+     });
 });

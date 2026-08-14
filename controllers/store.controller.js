@@ -177,3 +177,30 @@ export const requestPasswordCode = async (req, res) => {
     return res.status(500).json({ error: 'Erro interno do servidor.' });
   }
 };
+
+export const verifyPasswordCode = async (req, res) => {
+  try {
+    const { email, code } = req.body;
+
+    const store = await Store.findOne({ email }).select(
+      'email active resetPasswordCode resetPasswordCodeExpiresAt'
+    );
+
+    // Mesma mensagem genérica — não revela se o e-mail existe
+    if (!store || store.active === false) {
+      return res.status(403).json({ error: 'Código inválido ou expirado.' });
+    }
+
+    const expired = !store.resetPasswordCodeExpiresAt || store.resetPasswordCodeExpiresAt < new Date();
+
+    if (!store.resetPasswordCode || store.resetPasswordCode !== code || expired ) {
+      return res.status(403).json({ error: 'Código inválido ou expirado.' });
+    }
+
+    // Código válido — não invalida ainda (só no reset da senha)
+    return res.status(200).json({ message: 'Código verificado com sucesso.', });
+  } catch (error) {
+    console.error('Erro no verifyPasswordCode:', error);
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};
