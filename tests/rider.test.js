@@ -206,15 +206,17 @@ describe('Rider Routes', () => {
       expect(res.status).toBe(401);
       expect(res.body.error).toBe('Não autorizado');
     });
-    it('deve retornar status 200 e verificar a conta quando o código for válido', async () => {
+    it('deve retornar status 200, verificar a conta quando o código for válido e enviar email de confirmação ao rider', async () => {
       const {rider,token} = await createRiderWithToken({ password: '123456' });
       const validCode = '1234';
       await Rider.findByIdAndUpdate(rider._id, { emailVerificationCode: validCode });
+      vi.spyOn(sendEmail, 'sendAccountVerifiedEmail').mockResolvedValue({});
       const res = await request(app)
          .post('/api/riders/verify-account')
          .set('Authorization', `Bearer ${token}`)
          .send({code: validCode});
 
+      expect(sendEmail.sendAccountVerifiedEmail).toHaveBeenCalledWith(rider.email);
       expect(res.status).toBe(200);
       expect(res.body.emailVerificationCode).toBeNull();
       expect(res.body.emailVerifiedAt).not.toBeNull();
