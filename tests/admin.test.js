@@ -3,9 +3,12 @@ import request from 'supertest';
 import app from '../app.js';
 import Admin from '../models/admin.js';
 import Rider from '../models/rider.js';
+import Store from '../models/store.js';
 import bcryptjs from 'bcryptjs';
 import jsonwebtoken from 'jsonwebtoken';
-import {createAdmin,createAdminWithToken} from './factories/admin.factory.js'
+import {createAdmin,createAdminWithToken,createStore} from './factories/admin.factory.js'
+import {createStore} from './factories/store.factory.js'
+import {createRider} from './factories/rider.factory.js'
 import * as sendEmail from '../utils/sendEmailV2.js';
 
 const adminPayload = {
@@ -316,35 +319,7 @@ describe('Admin Routes', () => {
   // ACTIVE / DEACTIVE RIDER
   // =====================
   describe('PATCH /admin/riders/:id/active', () => {
-     let activeRideId;
-     let inactiveRideId;
-     beforeEach(async () => {
-       // active account rider
-          const activeAccountRiderPayload = {
-            name: 'Paulo Entregador',
-            email: 'paulo@test.com',
-            password: '123456',
-            phone: '11999999999',
-            vehicle: { type: 'Moto' },
-            accountApprovedAt: new Date(),
-            active: true
-          };
-          const activeRider = await Rider.create(activeAccountRiderPayload);
-           // inactive account rider
-          const inactiveAccountRiderPayload = {
-            name: 'Lucio Entregador',
-            email: 'lucio@test.com',
-            password: '123456',
-            phone: '11999999999',
-            vehicle: { type: 'Moto' },
-            accountApprovedAt: new Date(),
-            active: true
-          };
-          const inactiveRider = await Rider.create(inactiveAccountRiderPayload);
-
-          activeRideId = activeRider._id;
-          inactiveRideId = inactiveRider._id;
-     });
+   
     it('deve retordar status 404 quando Rider não existir', async () => {
          const { token } = await createAdminWithToken();
          const fakeId = '64f1a2b3c4d5e6f7a8b9c0d1';
@@ -358,24 +333,86 @@ describe('Admin Routes', () => {
      it('deve retornar status 401 quando não autenticado (sem token)', async () => {
         const fakeId = '64f1a2b3c4d5e6f7a8b9c0d1';
         const res = await request(app)
-         .patch(`/api/admin/riders/${fakeId}/approve`);
+         .patch(`/api/admin/riders/${fakeId}/active`);
          expect(res.status).toBe(401);
      });
      it('deve retornar status 200 e ativar a conta quando payload active for true', async () => { 
          const { token } = await createAdminWithToken();
+         const inactiveRider = await createRider({ active: false });
+
          const res = await request(app)
-         .patch(`/api/admin/riders/${inactiveRideId}/active`)
+         .patch(`/api/admin/riders/${inactiveRider._id}/active`)
          .send({ active: true })
          .set('Authorization', `Bearer ${token}`);
+
+         const updatedRider = await Rider.findById(inactiveRider._id);
+
+         expect(updatedRider.active).toBe(true);
          expect(res.status).toBe(200);
          expect(res.body.message).toBe('Conta ativada com sucesso.');
       });
       it('deve retornar status 200 e desativar a conta quando payload active for false', async () => { 
          const { token } = await createAdminWithToken();
+         const activeRider = await createRider({ active: true });
+
          const res = await request(app)
-         .patch(`/api/admin/riders/${activeRideId}/active`)
+         .patch(`/api/admin/riders/${activeRider._id}/active`)
          .send({ active: false })
          .set('Authorization', `Bearer ${token}`);
+
+         const updatedRider = await Rider.findById(activeRider._id);
+
+         expect(updatedRider.active).toBe(false);
+         expect(res.status).toBe(200);
+         expect(res.body.message).toBe('Conta desativada com sucesso.');
+      });
+  });
+   // =====================
+  // ACTIVE / DEACTIVE STORE
+  // =====================
+  describe('PATCH /admin/stores/:id/active', () => {
+     
+    it('deve retordar status 404 quando Store não existir', async () => {
+         const { token } = await createAdminWithToken();
+         const fakeId = '64f1a2b3c4d5e6f7a8b9c0d1';
+         const res = await request(app)
+         .patch(`/api/admin/stores/${fakeId}/active`)
+         .send({ active: true })
+         .set('Authorization', `Bearer ${token}`);
+         expect(res.status).toBe(404);
+         expect(res.body.error).toBe('Loja não encontrada.');
+      });
+     it('deve retornar status 401 quando não autenticado (sem token)', async () => {
+        const fakeId = '64f1a2b3c4d5e6f7a8b9c0d1';
+        const res = await request(app)
+         .patch(`/api/admin/stores/${fakeId}/active`);
+         expect(res.status).toBe(401);
+     });
+     it('deve retornar status 200 e ativar a conta quando payload active for true', async () => { 
+         const { token } = await createAdminWithToken();
+         const inactiveStore = await createStore({ active: false });
+         const res = await request(app)
+         .patch(`/api/admin/stores/${inactiveStore._id}/active`)
+         .send({ active: true })
+         .set('Authorization', `Bearer ${token}`);
+
+         const updatedStore = await Store.findById(inactiveStore._id);
+
+         expect(updatedStore.active).toBe(true);
+         expect(res.status).toBe(200);
+         expect(res.body.message).toBe('Conta ativada com sucesso.');
+      });
+      it('deve retornar status 200 e desativar a conta quando payload active for false', async () => { 
+         const { token } = await createAdminWithToken();
+         const activeStore = await createStore({ active: true });
+         const res = await request(app)
+         .patch(`/api/admin/stores/${activeStore._id}/active`)
+         .send({ active: false })
+         .set('Authorization', `Bearer ${token}`);
+
+         const updatedStore = await Store.findById(activeStore._id);
+
+         expect(updatedStore.active).toBe(false);
          expect(res.status).toBe(200);
          expect(res.body.message).toBe('Conta desativada com sucesso.');
       });
