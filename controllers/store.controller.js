@@ -204,3 +204,38 @@ export const verifyPasswordCode = async (req, res) => {
     return res.status(500).json({ error: 'Erro interno do servidor.' });
   }
 };
+
+export const resetPassword = async (req, res) => {
+  try {
+    const { email, code, password } = req.body;
+
+    const store = await Store.findOne({ email }).select('email active password resetPasswordCode resetPasswordCodeExpiresAt' );
+
+    if (!store || store.active === false) {
+      return res.status(403).json({ error: 'Código inválido ou expirado.' });
+    }
+
+    const expired = !store.resetPasswordCodeExpiresAt || store.resetPasswordCodeExpiresAt < new Date();
+
+    if (!store.resetPasswordCode || store.resetPasswordCode !== code || expired ) {
+      return res.status(403).json({ error: 'Código inválido ou expirado.' });
+    }
+
+    // Atualiza a senha
+    const salt = await bcryptjs.genSalt(10);
+    store.password = await bcryptjs.hash(password, salt);
+
+    // Invalida o código
+    store.resetPasswordCode = null;
+    store.resetPasswordCodeExpiresAt = null;
+
+    await store.save();
+
+    return res.status(200).json({
+      message: 'Senha redefinida com sucesso.',
+    });
+  } catch (error) {
+    console.error('Erro no resetPassword:', error);
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};

@@ -845,6 +845,41 @@ paths:
         '500':
           description: Erro interno do servidor
 
+  /stores/password/verify-code:
+    post:
+      tags: [Stores]
+      summary: Verificar código de recuperação de senha da loja
+      description: |
+        Valida o código de reset de senha da loja (e se ainda não expirou).
+        Não invalida o código — isso só ocorre no reset da senha.
+        Não requer autenticação.
+        Body: `email` + `code` (mesmo formato do fluxo de riders).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordVerifyCode'
+      responses:
+        '200':
+          description: Código válido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              example:
+                message: Código verificado com sucesso.
+        '403':
+          description: Código inválido ou expirado (ou e-mail inexistente / conta desativada)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Código inválido ou expirado.
+        '500':
+          description: Erro interno do servidor
+
 components:
   securitySchemes:
     bearerAuth:
