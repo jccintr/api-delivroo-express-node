@@ -189,7 +189,7 @@ describe('Rider Routes', () => {
   // =====================
   // Verify Account (POST /verify-account)
   // =====================
-   describe('POST /api/riders/verify-account', () => {
+  describe('POST /api/riders/verify-account', () => {
 
     it('deve retornar 401 quando não autenticado (sem token)', async () => {
       const res = await request(app).post('/api/riders/verify-account');

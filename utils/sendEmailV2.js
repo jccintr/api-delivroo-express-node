@@ -53,8 +53,18 @@ export const sendRiderVerificationAccountEmail = async (to, code) => {
   return sendEmail(to, 'Código de verificação — Delivroo Express', html);
 };
 
+export const sendStoreVerificationAccountEmail = async (to, code) => {
+  const html = loadTemplate('verification.store', { CODE: code });
+  return sendEmail(to, 'Código de verificação — Delivroo Express', html);
+};
+
 export const sendAccountVerifiedEmail = async (to) => {
   const html = loadTemplate('account-verified');
+  return sendEmail(to, 'Conta ativada com sucesso — Delivroo Express', html);
+};
+
+export const sendStoreAccountVerifiedEmail = async (to) => {
+  const html = loadTemplate('account-verified.store');
   return sendEmail(to, 'Conta ativada com sucesso — Delivroo Express', html);
 };
 

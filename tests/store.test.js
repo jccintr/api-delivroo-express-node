@@ -1,9 +1,11 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import app from '../app.js';
 import Store from '../models/store.js';
 import bcryptjs from 'bcryptjs';
 import jsonwebtoken from 'jsonwebtoken';
+import * as sendEmail from '../utils/sendEmailV2.js';
+import {createStore,createStoreWithToken} from './factories/store.factory.js'
 
 const storePayload = {
   name: 'Pizzaria Alegria',
@@ -17,11 +19,16 @@ describe('Store Routes', () => {
   // REGISTER
   // =====================
   describe('POST /api/stores/register', () => {
-    it('deve cadastrar uma loja com sucesso', async () => {
+    it('deve cadastrar uma loja com sucesso, gerar um código de verificação e enviar por email', async () => {
+           vi.spyOn(sendEmail, 'sendStoreVerificationAccountEmail').mockResolvedValue({});
           const res = await request(app)
             .post('/api/stores/register')
             .send(storePayload);
     
+           expect(sendEmail.sendStoreVerificationAccountEmail).toHaveBeenCalledWith(
+                    storePayload.email,
+                    expect.any(String)
+           );
           expect(res.status).toBe(201);
           expect(res.body.message).toBe('Conta criada com sucesso.');
           expect(res.body.store).toBeDefined();
@@ -175,4 +182,66 @@ describe('Store Routes', () => {
      });
 
    });
+  // =====================
+  // Verify Account (POST /verify-account)
+  // =====================
+  describe('POST /api/stores/verify-account', () => {
+  
+      it('deve retornar 401 quando não autenticado (sem token)', async () => {
+        const res = await request(app).post('/api/stores/verify-account');
+        expect(res.status).toBe(401);
+        expect(res.body.error).toBe('Não autorizado');
+      });
+      it('deve retornar 401 quando token for inválido', async () => {
+        const {store,token} = await createStoreWithToken({ password: '123456' });
+        const res = await request(app)
+           .post('/api/stores/verify-account')
+           .set('Authorization', `Bearer ${token}-invalido`)
+           .send({code: '1234'});
+  
+        expect(res.status).toBe(401);
+        expect(res.body.error).toBe('Não autorizado');
+      });
+      it('deve retornar status 200, verificar a conta quando o código for válido e enviar email de confirmação a Store', async () => {
+        const {store,token} = await createStoreWithToken({ password: '123456' });
+        const validCode = '1234';
+        await Store.findByIdAndUpdate(store._id, { emailVerificationCode: validCode });
+        vi.spyOn(sendEmail, 'sendStoreAccountVerifiedEmail').mockResolvedValue({});
+        const res = await request(app)
+           .post('/api/stores/verify-account')
+           .set('Authorization', `Bearer ${token}`)
+           .send({code: validCode});
+  
+        expect(sendEmail.sendStoreAccountVerifiedEmail).toHaveBeenCalledWith(store.email);
+        expect(res.status).toBe(200);
+        expect(res.body.emailVerificationCode).toBeNull();
+        expect(res.body.emailVerifiedAt).not.toBeNull();
+        
+      });
+      it('deve retornar status 403 quando o código for inválido', async () => {
+        const {store,token} = await createStoreWithToken({ password: '123456' });
+        const validCode = '1234';
+        await Store.findByIdAndUpdate(store._id, { emailVerificationCode: validCode });
+        const res = await request(app)
+           .post('/api/stores/verify-account')
+           .set('Authorization', `Bearer ${token}`)
+           .send({code: '0000'});
+  
+        expect(res.status).toBe(403);
+        expect(res.body.error).toBe('Código de verificação inválido.');
+      });
+      it('deve retornar status 400 quando a conta já estiver verificada', async () => {
+        const {store,token} = await createStoreWithToken({ password: '123456' });
+        const validCode = '1234';
+        await Store.findByIdAndUpdate(store._id, { emailVerificationCode: validCode, emailVerifiedAt: new Date() });
+        const res = await request(app)
+           .post('/api/stores/verify-account')
+           .set('Authorization', `Bearer ${token}`)
+           .send({code: validCode});
+  
+        expect(res.status).toBe(400);
+        expect(res.body.error).toBe('Conta já verificada.');
+      });
+  
+     });
 });

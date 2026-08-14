@@ -21,3 +21,10 @@ export const registerStoreValidator = [
 
   
 ];
+
+export const accountVerificationValidator = [
+  body('code')
+    .trim()
+    .notEmpty().withMessage('Código de verificação é obrigatório')
+    .isString().withMessage('Código de verificação deve ser uma string')
+];

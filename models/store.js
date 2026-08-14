@@ -63,7 +63,12 @@ const storeSchema = new mongoose.Schema({
     type: String,
     required: false,
     default: null
-  }
+  },
+   resetPasswordCodeExpiresAt:{
+      type:Date,
+      required:false,
+      default:null
+  },
 }, { timestamps: true });
 
 const Store = mongoose.model('Store', storeSchema);

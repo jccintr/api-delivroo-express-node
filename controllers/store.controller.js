@@ -1,6 +1,8 @@
 import bcryptjs from 'bcryptjs';
 import jsonwebtoken from 'jsonwebtoken';
 import Store from '../models/store.js';
+import { generateVerificationCode,sendStoreVerificationAccountEmail,sendStoreAccountVerifiedEmail }  from '../utils/sendEmailV2.js'
+
 
 
 export const register = async (req, res) => {
@@ -16,16 +18,17 @@ export const register = async (req, res) => {
     // Hash da senha
     const salt = await bcryptjs.genSalt(10);
     const hashedPassword = await bcryptjs.hash(password, salt);
-   
+    const emailVerificationCode = generateVerificationCode();
     const newStore = new Store({
       name,
       email,
       phone,
       password: hashedPassword,
+      emailVerificationCode
      });
 
     await newStore.save();
-
+    sendStoreVerificationAccountEmail(newStore.email,emailVerificationCode);
     const { password: _, ...storeData } = newStore._doc;
 
     return res.status(201).json({
@@ -103,3 +106,30 @@ export const validateToken = async (req, res) => {
     return res.status(500).json({ error: 'Erro interno do servidor.' });
   }
 };
+
+export const verifyAccount = async (req,res) => {
+
+    try {
+        const storeId = req.user?.id
+        const {code} = req.body;
+       
+        const store = await Store.findById(storeId).select('name email phone avatar doc active emailVerificationCode emailVerifiedAt ');
+
+        if(store.emailVerifiedAt){
+            return res.status(400).json({error:'Conta já verificada.'});
+        }
+        if(store.emailVerificationCode === code){
+            store.emailVerifiedAt = new Date();
+            store.emailVerificationCode = null;
+            await store.save();
+            sendStoreAccountVerifiedEmail(store.email);
+            return res.status(200).json(store);
+        } else {
+            return res.status(403).json({error:'Código de verificação inválido.'});
+        }
+    } catch(error){
+       console.error('Erro no validateToken:', error);
+       return res.status(500).json({ error: 'Erro interno do servidor.' });
+    }
+
+}
