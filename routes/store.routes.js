@@ -13,5 +13,6 @@ router.post('/register', registerStoreValidator, validate, StoreController.regis
 router.post('/login', loginValidator, validate, StoreController.login);
 router.get('/me', AuthStore, StoreController.validateToken);
 router.post('/verify-account',AuthStore, accountVerificationValidator, validate,StoreController.verifyAccount);
+router.post('/password/request',StoreController.requestPasswordCode);
 
 export default router;

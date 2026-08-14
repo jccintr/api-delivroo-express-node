@@ -1,7 +1,7 @@
 import bcryptjs from 'bcryptjs';
 import jsonwebtoken from 'jsonwebtoken';
 import Store from '../models/store.js';
-import { generateVerificationCode,sendStoreVerificationAccountEmail,sendStoreAccountVerifiedEmail }  from '../utils/sendEmailV2.js'
+import { generateVerificationCode,sendStoreVerificationAccountEmail,sendStoreAccountVerifiedEmail,sendStorePasswordResetEmail }  from '../utils/sendEmailV2.js'
 
 
 
@@ -133,3 +133,47 @@ export const verifyAccount = async (req,res) => {
     }
 
 }
+
+export const requestPasswordCode = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    // Resposta genérica — não revela se o e-mail existe
+    const genericResponse = {
+      message: 'Se este e-mail estiver cadastrado, enviaremos um código de verificação.',
+    };
+
+    const store = await Store.findOne({ email }).select(
+      'email active resetPasswordCode resetPasswordCodeExpiresAt'
+    );
+
+    // E-mail não cadastrado: mesma resposta (não envia nada)
+    if (!store) {
+      return res.status(200).json(genericResponse);
+    }
+
+    // Conta desativada: também não revela
+    if (store.active === false) {
+      return res.status(200).json(genericResponse);
+    }
+
+    // Gera código e define expiração (15 minutos)
+    const code = generateVerificationCode();
+    store.resetPasswordCode = code;
+    store.resetPasswordCodeExpiresAt = new Date(Date.now() + 15 * 60 * 1000);
+    await store.save();
+
+    // Envia e-mail (não bloqueia a resposta genérica se falhar — opcional)
+    try {
+      await sendStorePasswordResetEmail(store.email, code);
+    } catch (mailError) {
+      console.error('Erro ao enviar e-mail de recuperação:', mailError);
+      // Ainda retorna 200 para não vazar informação
+    }
+
+    return res.status(200).json(genericResponse);
+  } catch (error) {
+    console.error('Erro no requestPasswordCode:', error);
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};

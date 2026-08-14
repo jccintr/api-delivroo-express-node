@@ -243,5 +243,49 @@ describe('Store Routes', () => {
         expect(res.body.error).toBe('Conta já verificada.');
       });
   
-     });
+  });
+  // =====================
+  // Request Reset Password Code (POST /password/request)
+  // =====================
+   describe('POST /api/stores/password/request', () => {
+       it('deve retornar 200 e resposta genérica quando email não existir', async () => {
+            const store = await createStore({ password: '123456' });
+            const nonExistingEmail = 'fake@gmail.com';
+            const res = await request(app)
+              .post('/api/stores/password/request')
+              .send({email: nonExistingEmail});
+  
+            expect(res.status).toBe(200);
+            expect(res.body.message).toBe('Se este e-mail estiver cadastrado, enviaremos um código de verificação.');
+        });
+      it('deve retornar 200 e resposta genérica quando quando a conta estiver desativada', async () => {
+             const store = await createStore({ password: '123456' });
+            
+             await Store.findByIdAndUpdate(store._id, { active: false });
+             const res = await request(app)
+              .post('/api/stores/password/request')
+              .send({email: store.email});
+  
+            expect(res.status).toBe(200);
+            expect(res.body.message).toBe('Se este e-mail estiver cadastrado, enviaremos um código de verificação.');
+      });
+       it('deve retornar 200, resposta genérica, gerar um novo código com prazo de expiração e enviar o email quando quando o email existir e a conta estiver ativada', async () => {
+           const store = await createStore({ password: '123456' });
+           vi.spyOn(sendEmail, 'sendStorePasswordResetEmail').mockResolvedValue({});
+           const res = await request(app)
+              .post('/api/stores/password/request')
+              .send({email: store.email});
+  
+          const updated = await Store.findById(store._id).select('resetPasswordCode resetPasswordCodeExpiresAt');
+  
+            expect(res.status).toBe(200);
+            expect(updated.resetPasswordCode).toBeTruthy();
+            expect(updated.resetPasswordCodeExpiresAt).toBeTruthy();
+            expect(sendEmail.sendStorePasswordResetEmail).toHaveBeenCalledWith(
+              store.email,
+              expect.any(String)
+            );
+            expect(res.body.message).toBe('Se este e-mail estiver cadastrado, enviaremos um código de verificação.');
+       });
+    });
 });

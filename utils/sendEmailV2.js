@@ -73,6 +73,11 @@ export const sendRiderPasswordResetEmail = async (to, code) => {
   return sendEmail(to, 'Redefinição de senha — Delivroo Express', html);
 }
 
+export const sendStorePasswordResetEmail = async (to, code) => {
+  const html = loadTemplate('password-reset', { CODE: code });
+  return sendEmail(to, 'Redefinição de senha — Delivroo Express', html);
+}
+
 export const sendRiderAccountApprovedEmail = async (to, name) => {
   const html = loadTemplate('account-approved', { NAME: name || 'Entregador' });
   return sendEmail(to, 'Conta aprovada — Delivroo Express', html);
