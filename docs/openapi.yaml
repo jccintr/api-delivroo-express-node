@@ -593,7 +593,11 @@ paths:
     patch:
       tags: [Admin]
       summary: Aprovar conta de um rider
-      description: Define `accountApprovedAt` com a data/hora atual. Só pode ser feito uma vez por rider.
+      description: |
+        Define `accountApprovedAt` com a data/hora atual.
+        Exige que o rider já tenha enviado o documento (`documentImage`).
+        Só pode ser feito uma vez por rider.
+        Após a aprovação, um e-mail de congratulação pode ser enviado ao rider.
       security:
         - bearerAuth: []
       parameters:
@@ -612,13 +616,18 @@ paths:
               schema:
                 $ref: '#/components/schemas/RiderActionResponse'
         '400':
-          description: Conta já aprovada
+          description: Conta já aprovada ou documento ainda não enviado
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-              example:
-                error: Conta já aprovada.
+              examples:
+                alreadyApproved:
+                  value:
+                    error: Conta já aprovada.
+                noDocument:
+                  value:
+                    error: Documento ainda não enviado.
         '401':
           description: Não autorizado
         '404':
@@ -688,6 +697,9 @@ paths:
     post:
       tags: [Stores]
       summary: Cadastrar loja
+      description: |
+        Cria a conta da loja e envia por e-mail o código de verificação.
+        Use `POST /stores/verify-account` (autenticado) para ativar o e-mail.
       requestBody:
         required: true
         content:
@@ -779,6 +791,57 @@ paths:
                 $ref: '#/components/schemas/Error'
               example:
                 error: Loja não encontrada.
+        '500':
+          description: Erro interno do servidor
+
+  /stores/verify-account:
+    post:
+      tags: [Stores]
+      summary: Verificar conta da loja
+      description: |
+        Valida o código de verificação enviado por e-mail no cadastro da loja.
+        Define `emailVerifiedAt` com a data/hora atual e limpa `emailVerificationCode`.
+        Envia e-mail de confirmação após a verificação.
+        Requer autenticação (Bearer token JWT de store).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StoreVerifyAccount'
+      responses:
+        '200':
+          description: Conta verificada com sucesso — retorna o perfil da loja
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoreProfile'
+        '400':
+          description: Conta já verificada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Conta já verificada.
+        '401':
+          description: Não autorizado
+        '403':
+          description: Código de verificação inválido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Código de verificação inválido.
+        '422':
+          description: Dados inválidos (código obrigatório)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '500':
           description: Erro interno do servidor
 
@@ -1137,6 +1200,17 @@ components:
           type: string
           example: "123456"
 
+    StoreVerifyAccount:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+          description: Código de verificação enviado por e-mail no cadastro
+          example: "5048"
+          minLength: 4
+          maxLength: 4
+
     StoreProfile:
       type: object
       properties:
@@ -1164,6 +1238,12 @@ components:
         active:
           type: boolean
           example: true
+        emailVerifiedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Data/hora em que o e-mail foi verificado (null se ainda não verificado)
+          example: "2026-08-02T20:15:00.000Z"
 
     StoreRegisterResponse:
       type: object
