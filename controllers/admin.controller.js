@@ -2,6 +2,7 @@ import bcryptjs from 'bcryptjs';
 import jsonwebtoken from 'jsonwebtoken';
 import Admin from '../models/admin.js';
 import Rider from '../models/rider.js';
+import Store from '../models/store.js';
 import { sendRiderAccountApprovedEmail } from '../utils/sendEmailV2.js';
 
 export const register = async (req, res) => {
@@ -203,6 +204,36 @@ export const setRiderActive = async (req, res) => {
     });
   } catch (error) {
     console.error('Erro no setRiderActive:', error);
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};
+
+export const setStoreActive = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { active } = req.body;
+
+    if (typeof active !== 'boolean') {
+      return res.status(400).json({ error: 'O campo "active" deve ser true ou false.' });
+    }
+
+    const store = await Store.findById(id);
+
+    if (!store) {
+      return res.status(404).json({ error: 'Loja não encontrada.' });
+    }
+
+    store.active = active;
+    await store.save();
+
+    const { password: _, ...storeData } = store._doc;
+
+    return res.status(200).json({
+      message: active ? 'Conta ativada com sucesso.' : 'Conta desativada com sucesso.',
+      store: storeData
+    });
+  } catch (error) {
+    console.error('Erro no setStoreActive:', error);
     return res.status(500).json({ error: 'Erro interno do servidor.' });
   }
 };

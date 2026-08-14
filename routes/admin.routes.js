@@ -13,5 +13,6 @@ router.get('/me', AuthAdmin, AdminController.validateToken);
 router.post('/create', AuthAdmin,registerValidator, validate, AdminController.register);
 router.patch('/riders/:id/approve', AuthAdmin, AdminController.approveRider);
 router.patch('/riders/:id/active', AuthAdmin, AdminController.setRiderActive);
+router.patch('/stores/:id/active', AuthAdmin, AdminController.setStoreActive);
 
 export default router;
