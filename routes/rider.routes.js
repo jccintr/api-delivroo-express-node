@@ -10,7 +10,7 @@ const router = Router();
 
 router.post('/register', registerValidator, validate, RiderController.register);
 router.post('/login', loginValidator, validate, RiderController.login);
-router.post('/verify-account/resend',AuthRider,RiderController.resendAccountVerificationCode);
+//router.post('/verify-account/resend',AuthRider,RiderController.resendAccountVerificationCode);
 router.post('/verify-account',AuthRider, accountVerificationValidator, validate,RiderController.verifyAccount);
 router.post('/password/request',RiderController.requestPasswordCode);
 router.post('/password/verify-code',RiderController.verifyPasswordCode);

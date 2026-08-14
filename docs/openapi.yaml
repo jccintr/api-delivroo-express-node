@@ -880,6 +880,47 @@ paths:
         '500':
           description: Erro interno do servidor
 
+  /stores/password/reset:
+    post:
+      tags: [Stores]
+      summary: Redefinir senha da loja
+      description: |
+        Valida e-mail + código + expiração, atualiza a senha da loja
+        e invalida `resetPasswordCode` / `resetPasswordCodeExpiresAt`.
+        Não requer autenticação.
+        Body: `email`, `code` e `password` (nova senha).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordReset'
+      responses:
+        '200':
+          description: Senha redefinida com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              example:
+                message: Senha redefinida com sucesso.
+        '403':
+          description: Código inválido ou expirado (ou e-mail inexistente / conta desativada)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Código inválido ou expirado.
+        '422':
+          description: Dados inválidos (validação — e-mail, código ou senha)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Erro interno do servidor
+
 components:
   securitySchemes:
     bearerAuth:

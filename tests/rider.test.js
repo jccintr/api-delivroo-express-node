@@ -251,7 +251,7 @@ describe('Rider Routes', () => {
   // =====================
   // Resend Account Verification Code (POST /verify-account/resend)
   // =====================
-  describe('POST /api/riders/verify-account/resend', () => {
+/*  describe('POST /api/riders/verify-account/resend', () => {
     it('deve retornar 401 quando não autenticado (sem token)', async () => {
       const res = await request(app).post('/api/riders/verify-account/resend');
       expect(res.status).toBe(401);
@@ -309,7 +309,7 @@ describe('Rider Routes', () => {
        expect(res.body.message).toBe('Código de verificação reenviado.');
      });
 
-  });
+  });*/
   // =====================
   // Request Reset Password Code (POST /password/request)
   // =====================
