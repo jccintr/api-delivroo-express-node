@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import app from '../app.js';
 import Admin from '../models/admin.js';
@@ -6,6 +6,7 @@ import Rider from '../models/rider.js';
 import bcryptjs from 'bcryptjs';
 import jsonwebtoken from 'jsonwebtoken';
 import {createAdmin,createAdminWithToken} from './factories/admin.factory.js'
+import * as sendEmail from '../utils/sendEmailV2.js';
 
 const adminPayload = {
   name: 'João Entregador',
@@ -287,13 +288,18 @@ describe('Admin Routes', () => {
          expect(res.status).toBe(400);
          expect(res.body.error).toBe('Conta já aprovada.');
       });
-      it('deve retordar status 200 e Rider data quando a conta for aprovada com sucesso', async () => {
+      it('deve retordar status 200, enviar o email, e Rider data quando a conta for aprovada com sucesso', async () => {
+         vi.spyOn(sendEmail, 'sendRiderAccountApprovedEmail').mockResolvedValue({});
          const { token } = await createAdminWithToken();
          await Rider.findByIdAndUpdate(newRiderId, { documentImage: 'https://res.cloudinary.com/demo/image/upload/v1/delivroo/riders/rider_test.jpg' });
          const res = await request(app)
          .patch(`/api/admin/riders/${newRiderId}/approve`)
          .set('Authorization', `Bearer ${token}`);
      
+          expect(sendEmail.sendRiderAccountApprovedEmail).toHaveBeenCalledWith(
+                   res.body.rider.email,
+                   expect.any(String)
+                );
           expect(res.status).toBe(200);
           expect(res.body.message).toBe('Conta aprovada com sucesso.');
           expect(res.body.rider).toBeDefined();

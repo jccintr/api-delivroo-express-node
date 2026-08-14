@@ -2,6 +2,7 @@ import bcryptjs from 'bcryptjs';
 import jsonwebtoken from 'jsonwebtoken';
 import Admin from '../models/admin.js';
 import Rider from '../models/rider.js';
+import { sendRiderAccountApprovedEmail } from '../utils/sendEmailV2.js';
 
 export const register = async (req, res) => {
   try {
@@ -155,6 +156,13 @@ export const approveRider = async (req, res) => {
 
     rider.accountApprovedAt = new Date();
     await rider.save();
+
+    // Envia e-mail de congratulação (não bloqueia a resposta em caso de falha)
+    try {
+      await sendRiderAccountApprovedEmail(rider.email, rider.name);
+    } catch (mailError) {
+      console.error('Erro ao enviar e-mail de aprovação do rider:', mailError);
+    }
 
     const { password: _, ...riderData } = rider._doc;
 
