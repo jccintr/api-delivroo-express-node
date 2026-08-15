@@ -650,6 +650,74 @@ paths:
         '500':
           description: Erro interno do servidor
 
+  /admin/stores/{id}/active:
+    patch:
+      tags: [Admin]
+      summary: Ativar ou desativar conta de uma loja
+      description: |
+        Altera o campo `active` da loja.
+        Contas desativadas não conseguem fazer login.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID da loja (MongoDB ObjectId)
+          schema:
+            type: string
+            example: "6a7f613a9620c4bb4fc81f9f"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetStoreActive'
+      responses:
+        '200':
+          description: Status da conta alterado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoreActionResponse'
+              examples:
+                activated:
+                  value:
+                    message: Conta ativada com sucesso.
+                    store:
+                      _id: "6a7f613a9620c4bb4fc81f9f"
+                      name: Pizzaria do Centro
+                      email: contato@pizzaria.com
+                      active: true
+                deactivated:
+                  value:
+                    message: Conta desativada com sucesso.
+                    store:
+                      _id: "6a7f613a9620c4bb4fc81f9f"
+                      name: Pizzaria do Centro
+                      email: contato@pizzaria.com
+                      active: false
+        '400':
+          description: Campo active inválido (deve ser boolean)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: 'O campo "active" deve ser true ou false.'
+        '401':
+          description: Não autorizado
+        '404':
+          description: Loja não encontrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Loja não encontrada.
+        '500':
+          description: Erro interno do servidor
+
   # =====================
   # STORES
   # =====================
@@ -1127,6 +1195,24 @@ components:
           type: boolean
           description: true = ativar | false = desativar
           example: false
+
+    SetStoreActive:
+      type: object
+      required: [active]
+      properties:
+        active:
+          type: boolean
+          description: true = ativar | false = desativar
+          example: false
+
+    StoreActionResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Conta ativada com sucesso.
+        store:
+          $ref: '#/components/schemas/StoreProfile'
 
     # ----- Admin -----
     AdminRegister:
