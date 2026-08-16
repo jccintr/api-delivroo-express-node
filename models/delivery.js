@@ -17,7 +17,7 @@ const deliverySchema = new mongoose.Schema({
         default:null
  },
  origem:{latitude:Number,longitude:Number,address:String},
- destino:{latitude:Number,longitude:Number,address:String},
+ destino:{latitude:Number,longitude:Number,address:String,nome:String,telefone:String},
  distancia: { 
     type:Number,
     required:true
