@@ -254,7 +254,7 @@ export const updateProfile = async (req, res) => {
     }
 
      if (!store.emailVerifiedAt) {
-      return res.status(404).json({ error: 'Conta ainda não verificada.' });
+      return res.status(403).json({ error: 'Conta ainda não verificada.' });
     }
 
     if (store.active === false) {
