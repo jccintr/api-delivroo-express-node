@@ -46,7 +46,7 @@ export const login = async (req, res) => {
     const { email, password } = req.body;
 
     const store = await Store.findOne({ email }).select(
-      'name email phone password avatar doc active'
+      'name email phone password avatar doc active address emailVerifiedAt'
     );
 
     if (!store) {
@@ -88,7 +88,7 @@ export const validateToken = async (req, res) => {
     const storeId = req.user?.id || req.body.storeId;
 
     const store = await Store.findById(storeId).select(
-      'name email phone avatar doc active'
+      'name email phone avatar doc active address emailVerifiedAt'
     );
 
     if (!store) {
@@ -240,3 +240,51 @@ export const resetPassword = async (req, res) => {
   }
 };
 
+export const updateProfile = async (req, res) => {
+  try {
+    const storeId = req.user?.id;
+    const { name, phone, doc, address } = req.body;
+
+    const store = await Store.findById(storeId).select(
+      'name email phone avatar doc active emailVerifiedAt address '
+    );
+
+    if (!store) {
+      return res.status(404).json({ error: 'Loja não encontrada.' });
+    }
+
+     if (!store.emailVerifiedAt) {
+      return res.status(404).json({ error: 'Conta ainda não verificada.' });
+    }
+
+    if (store.active === false) {
+      return res.status(403).json({ error: 'Conta desativada.' });
+    }
+
+    if (name !== undefined) store.name = name;
+    if (phone !== undefined) store.phone = phone;
+    if (doc !== undefined) store.doc = doc || null;
+
+    if (address !== undefined && address !== null) {
+      // merge parcial: só sobrescreve campos enviados
+      store.address = {
+        street: address.street !== undefined ? address.street : store.address?.street,
+        number: address.number !== undefined ? address.number : store.address?.number,
+        complement: address.complement !== undefined ? address.complement : store.address?.complement,
+        district: address.district !== undefined ? address.district : store.address?.district,
+        city: address.city !== undefined ? address.city : store.address?.city,
+        state: address.state !== undefined ? address.state : store.address?.state,
+        zipCode: address.zipCode !== undefined ? address.zipCode : store.address?.zipCode,
+        latitude: address.latitude !== undefined ? address.latitude : store.address?.latitude,
+        longitude: address.longitude !== undefined ? address.longitude : store.address?.longitude,
+      };
+    }
+
+    await store.save();
+
+    return res.status(200).json(store);
+  } catch (error) {
+    console.error('Erro no updateProfile:', error);
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};

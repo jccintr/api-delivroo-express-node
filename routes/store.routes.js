@@ -4,7 +4,12 @@ import * as StoreController from '../controllers/store.controller.js';
 import AuthStore from '../middlewares/auth.store.js';
 import {validate} from '../middlewares/validate.js'
 import { loginValidator } from '../validators/rider.validator.js';
-import {registerStoreValidator, accountVerificationValidator,resetPasswordValidator} from '../validators/store.validator.js'
+import {
+    registerStoreValidator, 
+    accountVerificationValidator,
+    resetPasswordValidator,
+    updateProfileValidator
+} from '../validators/store.validator.js'
 
 
 const router = Router();
@@ -12,6 +17,7 @@ const router = Router();
 router.post('/register', registerStoreValidator, validate, StoreController.register);
 router.post('/login', loginValidator, validate, StoreController.login);
 router.get('/me', AuthStore, StoreController.validateToken);
+router.patch('/me', AuthStore, updateProfileValidator, validate, StoreController.updateProfile);
 router.post('/verify-account',AuthStore, accountVerificationValidator, validate,StoreController.verifyAccount);
 router.post('/password/request',StoreController.requestPasswordCode);
 router.post('/password/verify-code',StoreController.verifyPasswordCode);
