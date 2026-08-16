@@ -2,7 +2,7 @@ import bcryptjs from 'bcryptjs';
 import jsonwebtoken from 'jsonwebtoken';
 import Store from '../models/store.js';
 import { generateVerificationCode,sendStoreVerificationAccountEmail,sendStoreAccountVerifiedEmail,sendStorePasswordResetEmail }  from '../utils/sendEmailV2.js'
-
+import cloudinary from '../utils/cloudinary.js';
 
 
 export const register = async (req, res) => {
@@ -285,6 +285,58 @@ export const updateProfile = async (req, res) => {
     return res.status(200).json(store);
   } catch (error) {
     console.error('Erro no updateProfile:', error);
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};
+
+export const uploadAvatar = async (req, res) => {
+  try {
+    const storeId = req.user?.id;
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'Nenhuma imagem enviada.' });
+    }
+
+    const store = await Store.findById(storeId).select('avatar');
+    if (!store) {
+      return res.status(404).json({ error: 'Loja não encontrada.' });
+    }
+
+    // Remove avatar antigo no Cloudinary (se existir public_id salvo)
+    // Opcional: se você guardar avatarPublicId no model
+
+    const result = await new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        {
+          folder: 'delivroo/stores',
+          public_id: `store_${storeId}`,
+          overwrite: true,
+          transformation: [
+            { width: 400, height: 400, crop: 'fill', gravity: 'face' },
+            { quality: 'auto', fetch_format: 'auto' },
+          ],
+        },
+        (error, result) => {
+          if (error) reject(error);
+          else resolve(result);
+        }
+      );
+
+      uploadStream.end(req.file.buffer);
+    });
+
+    store.avatar = result.secure_url;
+    await store.save();
+
+    return res.status(200).json({
+      message: 'Avatar atualizado com sucesso.',
+      avatar: result.secure_url,
+    });
+  } catch (error) {
+    console.error('Erro no uploadAvatar:', error);
+    if (error.message?.includes('File too large')) {
+      return res.status(400).json({ error: 'Imagem muito grande. Máximo 2 MB.' });
+    }
     return res.status(500).json({ error: 'Erro interno do servidor.' });
   }
 };
