@@ -822,6 +822,88 @@ paths:
         '500':
           description: Erro interno do servidor
 
+    patch:
+      tags: [Stores]
+      summary: Atualizar perfil da loja
+      description: |
+        Atualiza `name`, `phone`, `doc` e/ou `address` da loja autenticada.
+        Envie apenas os campos que deseja alterar (todos opcionais).
+        Em `address`, o merge é parcial: só sobrescreve as chaves enviadas.
+        `address.state` deve ser a sigla da UF brasileira (ex: SP, RJ, MG).
+        Requer e-mail verificado (`emailVerifiedAt` preenchido) e conta ativa.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StoreUpdateProfile'
+            examples:
+              basic:
+                summary: Nome e telefone
+                value:
+                  name: Pizzaria do Centro
+                  phone: "11988887777"
+              withAddress:
+                summary: Com endereço completo
+                value:
+                  name: Pizzaria do Centro
+                  phone: "11988887777"
+                  doc: "12345678000199"
+                  address:
+                    street: Rua das Flores
+                    number: "100"
+                    complement: Loja 2
+                    district: Centro
+                    city: São Paulo
+                    state: SP
+                    zipCode: "01001000"
+                    latitude: -23.5505
+                    longitude: -46.6333
+      responses:
+        '200':
+          description: Perfil atualizado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoreProfile'
+        '401':
+          description: Não autorizado
+        '403':
+          description: Conta desativada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Conta desativada.
+        '404':
+          description: Loja não encontrada ou conta ainda não verificada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                notFound:
+                  value:
+                    error: Loja não encontrada.
+                notVerified:
+                  value:
+                    error: Conta ainda não verificada.
+        '422':
+          description: Dados inválidos (validação)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidState:
+                  value:
+                    error: Estado inválido.
+        '500':
+          description: Erro interno do servidor
+
   /stores/verify-account:
     post:
       tags: [Stores]
@@ -1333,6 +1415,70 @@ components:
           minLength: 4
           maxLength: 4
 
+    StoreUpdateProfile:
+      type: object
+      description: Envie apenas os campos que deseja alterar
+      properties:
+        name:
+          type: string
+          minLength: 3
+          example: Pizzaria do Centro
+        phone:
+          type: string
+          example: "11988887777"
+        doc:
+          type: string
+          nullable: true
+          description: CNPJ ou documento da loja
+          example: "12345678000199"
+        address:
+          $ref: '#/components/schemas/StoreAddress'
+
+    StoreAddress:
+      type: object
+      description: Endereço da loja (merge parcial na atualização)
+      properties:
+        street:
+          type: string
+          nullable: true
+          example: Rua das Flores
+        number:
+          type: string
+          nullable: true
+          example: "100"
+        complement:
+          type: string
+          nullable: true
+          example: Loja 2
+        district:
+          type: string
+          nullable: true
+          example: Centro
+        city:
+          type: string
+          nullable: true
+          example: São Paulo
+        state:
+          type: string
+          nullable: true
+          description: Sigla da UF brasileira (2 letras)
+          enum: [AC, AL, AP, AM, BA, CE, DF, ES, GO, MA, MT, MS, MG, PA, PB, PR, PE, PI, RJ, RN, RS, RO, RR, SC, SP, SE, TO]
+          example: SP
+        zipCode:
+          type: string
+          nullable: true
+          example: "01001000"
+        latitude:
+          type: number
+          format: float
+          nullable: true
+          example: -23.5505
+        longitude:
+          type: number
+          format: float
+          nullable: true
+          example: -46.6333
+
     StoreProfile:
       type: object
       properties:
@@ -1356,7 +1502,7 @@ components:
         doc:
           type: string
           nullable: true
-          example: null
+          example: "12345678000199"
         active:
           type: boolean
           example: true
@@ -1366,6 +1512,8 @@ components:
           nullable: true
           description: Data/hora em que o e-mail foi verificado (null se ainda não verificado)
           example: "2026-08-02T20:15:00.000Z"
+        address:
+          $ref: '#/components/schemas/StoreAddress'
 
     StoreRegisterResponse:
       type: object
