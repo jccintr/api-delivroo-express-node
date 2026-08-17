@@ -251,7 +251,7 @@ describe('Rider Routes', () => {
   // =====================
   // Resend Account Verification Code (POST /verify-account/resend)
   // =====================
-/*  describe('POST /api/riders/verify-account/resend', () => {
+  describe('POST /api/riders/verify-account/resend', () => {
     it('deve retornar 401 quando não autenticado (sem token)', async () => {
       const res = await request(app).post('/api/riders/verify-account/resend');
       expect(res.status).toBe(401);
@@ -274,7 +274,7 @@ describe('Rider Routes', () => {
          .set('Authorization', `Bearer ${token}`);
      
       expect(res.status).toBe(404);
-      expect(res.body.error).toBe('Rider não encontrado.');
+      expect(res.body.error).toBe('Entregador não encontrado.');
     });
     it('deve retornar 400 quando a conta já estiver verificada', async () => {
       const {rider,token} = await createRiderWithToken({ password: '123456' });
@@ -309,7 +309,7 @@ describe('Rider Routes', () => {
        expect(res.body.message).toBe('Código de verificação reenviado.');
      });
 
-  });*/
+  });
   // =====================
   // Request Reset Password Code (POST /password/request)
   // =====================
