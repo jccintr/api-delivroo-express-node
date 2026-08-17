@@ -245,6 +245,68 @@ describe('Store Routes', () => {
   
   });
   // =====================
+    // Resend Account Verification Code (POST /verify-account/resend)
+    // =====================
+  describe('POST /api/stores/verify-account/resend', () => {
+    it('deve retornar 401 quando não autenticado (sem token)', async () => {
+      const res = await request(app).post('/api/stores/verify-account/resend');
+      expect(res.status).toBe(401);
+      expect(res.body.error).toBe('Não autorizado');
+    });
+    it('deve retornar 401 quando token for inválido', async () => {
+      const {store,token} = await createStoreWithToken({ password: '123456' });
+      const res = await request(app)
+          .post('/api/stores/verify-account/resend')
+          .set('Authorization', `Bearer ${token}-invalido`);
+      
+      expect(res.status).toBe(401);
+      expect(res.body.error).toBe('Não autorizado');
+    });
+    it('deve retornar 404 quando store não existir', async () => {
+      const {store,token} = await createStoreWithToken({ password: '123456' });
+      await Store.findByIdAndDelete(store._id);
+      const res = await request(app)
+          .post('/api/stores/verify-account/resend')
+          .set('Authorization', `Bearer ${token}`);
+      
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe('Loja não encontrada.');
+    });
+    it('deve retornar 400 quando a conta já estiver verificada', async () => {
+      const {store,token} = await createStoreWithToken({ password: '123456' });
+      const validCode = '1234';
+      await Store.findByIdAndUpdate(store._id, { emailVerificationCode: validCode, emailVerifiedAt: new Date() });
+      const res = await request(app)
+          .post('/api/stores/verify-account/resend')
+          .set('Authorization', `Bearer ${token}`);
+      
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('Conta já verificada.');
+    });
+      it('deve retornar 200, gerar um novo código de verificação e reenviar quando o store existir e não estiver verificado', async () => {
+        const {store,token} = await createStoreWithToken({ password: '123456' });
+        const oldCode = '1234';
+        await Store.findByIdAndUpdate(store._id, { emailVerificationCode: oldCode });
+        vi.spyOn(sendEmail, 'sendStoreVerificationAccountEmail').mockResolvedValue({});
+        const res = await request(app)
+          .post('/api/stores/verify-account/resend')
+          .set('Authorization', `Bearer ${token}`);
+
+        const updated = await Store.findById(store._id).select('emailVerificationCode');
+
+        expect(res.status).toBe(200);
+        expect(sendEmail.sendStoreVerificationAccountEmail).toHaveBeenCalledWith(
+          store.email,
+          expect.any(String)
+        );
+        expect(updated.emailVerificationCode).toBeTruthy();
+        expect(updated.emailVerificationCode).not.toBe(oldCode);
+        expect(updated.emailVerificationCode).toHaveLength(4);
+        expect(res.body.message).toBe('Código de verificação reenviado.');
+      });
+
+  });
+  // =====================
   // Request Reset Password Code (POST /password/request)
   // =====================
    describe('POST /api/stores/password/request', () => {

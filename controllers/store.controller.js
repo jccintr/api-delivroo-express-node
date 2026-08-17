@@ -154,7 +154,7 @@ export const resendAccountVerificationCode = async (req, res) => {
     await store.save();
 
     // Envia e-mail
-    await sendRiderVerificationAccountEmail(store.email, code);
+    await sendStoreVerificationAccountEmail(store.email, code);
 
     return res.status(200).json({message: 'Código de verificação reenviado.', });
   } catch (error) {
