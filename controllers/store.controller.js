@@ -134,6 +134,35 @@ export const verifyAccount = async (req,res) => {
 
 }
 
+export const resendAccountVerificationCode = async (req, res) => {
+  try {
+    const storeId = req.user?.id;
+
+    const store = await Store.findById(storeId).select('email emailVerifiedAt emailVerificationCode');
+
+    if (!store) {
+      return res.status(404).json({ error: 'Loja não encontrada.' });
+    }
+
+    if (store.emailVerifiedAt) {
+      return res.status(400).json({ error: 'Conta já verificada.' });
+    }
+
+    // Gera novo código
+    const code = generateVerificationCode();
+    store.emailVerificationCode = code;
+    await store.save();
+
+    // Envia e-mail
+    await sendRiderVerificationAccountEmail(store.email, code);
+
+    return res.status(200).json({message: 'Código de verificação reenviado.', });
+  } catch (error) {
+      console.error('Erro no resendVerificationCode:', error);
+      return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};
+
 export const requestPasswordCode = async (req, res) => {
   try {
     const { email } = req.body;

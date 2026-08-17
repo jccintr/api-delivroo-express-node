@@ -21,6 +21,7 @@ router.get('/me', AuthStore, StoreController.validateToken);
 router.patch('/me', AuthStore, updateProfileValidator, validate, StoreController.updateProfile);
 router.patch('/me/avatar', AuthStore,uploadMiddleware.single('avatar'),StoreController.uploadAvatar);
 router.post('/verify-account',AuthStore, accountVerificationValidator, validate,StoreController.verifyAccount);
+router.post('/verify-account/resend',AuthStore,StoreController.resendAccountVerificationCode);
 router.post('/password/request',StoreController.requestPasswordCode);
 router.post('/password/verify-code',StoreController.verifyPasswordCode);
 router.post('/password/reset',resetPasswordValidator, validate, StoreController.resetPassword);

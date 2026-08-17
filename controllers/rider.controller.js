@@ -145,7 +145,7 @@ export const verifyAccount = async (req,res) => {
     }
 
 }
-/*
+
 export const resendAccountVerificationCode = async (req, res) => {
   try {
     const riderId = req.user?.id;
@@ -153,7 +153,7 @@ export const resendAccountVerificationCode = async (req, res) => {
     const rider = await Rider.findById(riderId).select('email emailVerifiedAt emailVerificationCode');
 
     if (!rider) {
-      return res.status(404).json({ error: 'Rider não encontrado.' });
+      return res.status(404).json({ error: 'Entregador não encontrado.' });
     }
 
     if (rider.emailVerifiedAt) {
@@ -174,7 +174,7 @@ export const resendAccountVerificationCode = async (req, res) => {
       return res.status(500).json({ error: 'Erro interno do servidor.' });
   }
 };
-*/
+
 export const requestPasswordCode = async (req, res) => {
   try {
     const { email } = req.body;
