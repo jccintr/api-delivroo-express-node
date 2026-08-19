@@ -16,7 +16,7 @@ const deliverySchema = new mongoose.Schema({
         ref: "Rider",
         default:null
  },
- origem:{latitude:Number,longitude:Number,address:String},
+ origem:{latitude:Number,longitude:Number,address:String},  
  destino:{latitude:Number,longitude:Number,address:String,nome:String,telefone:String},
  distancia: { 
     type:Number,
@@ -43,8 +43,8 @@ const deliverySchema = new mongoose.Schema({
   quantity:      { type: Number, required: true, min: 1, default: 1 },
   weight:        { type: Number, required: false },   // kg
   declaredvalue: { type: Number, default: 0 },
-  notes:         { type: String },
-  payment:       { type: String, enum: ['Dinheiro','Cartão Crédito','Cartão Débito','Pago'], default: 'Dinheiro'},
+  notes:         { type: String, required: false },
+  payment:       { type: String, enum: ['Dinheiro','Cartão Crédito','Cartão Débito','Pago','Nada a Pagar'], default: 'Dinheiro'},
   cashChange:    { type: Number, default: 0 },
 }
 
