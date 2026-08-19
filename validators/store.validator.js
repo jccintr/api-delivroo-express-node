@@ -92,3 +92,15 @@ export const updateProfileValidator = [
   body('address.latitude').optional({ nullable: true }).isFloat().withMessage('Latitude inválida.'),
   body('address.longitude').optional({ nullable: true }).isFloat().withMessage('Longitude inválida.'),
 ];
+
+export const updateLocationValidator = [
+   body('latitude')
+    .trim()
+    .notEmpty().withMessage('Latitude é obrigatória')
+    .isFloat({ min: -180, max: 180 }).withMessage('Longitude inválida'),
+
+  body('longitude')
+    .trim()
+    .notEmpty().withMessage('Longitude é obrigatória')
+    .isFloat({ min: -90, max: 90 }).withMessage('Longitude inválida'),
+];

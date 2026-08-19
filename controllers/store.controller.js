@@ -369,3 +369,37 @@ export const uploadAvatar = async (req, res) => {
     return res.status(500).json({ error: 'Erro interno do servidor.' });
   }
 };
+
+export const updateLocation = async (req, res) => {
+
+  try {
+    const storeId = req.user?.id;
+    const { latitude, longitude } = req.body;
+
+    const store = await Store.findById(storeId).select(
+      'name email phone avatar doc active emailVerifiedAt address '
+    );
+
+    if (!store) {
+      return res.status(404).json({ error: 'Loja não encontrada.' });
+    }
+
+    if (!store.emailVerifiedAt) {
+      return res.status(403).json({ error: 'Conta ainda não verificada.' });
+    }
+
+    if (store.active === false) {
+      return res.status(403).json({ error: 'Conta desativada.' });
+    }
+
+    store.address.latitude = latitude;
+    store.address.longitude = longitude;
+    await store.save();
+
+    return res.status(200).json(store);
+
+  } catch (error) {
+    console.error('Erro no updateLocation:', error);
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+}
