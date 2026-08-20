@@ -1,24 +1,7 @@
 import Store from '../models/store.js';
 import Delivery from '../models/delivery.js';
 import { distanceBetween } from '../utils/googleMaps.js';
-
-// Monta um endereço de texto único a partir do endereço estruturado da loja,
-// usado como texto de exibição (não para o cálculo de distância).
-function buildStoreAddressText(address) {
-  if (!address) return null;
-
-  const { street, number, complement, district, city, state, zipCode } = address;
-
-  const parts = [
-    [street, number].filter(Boolean).join(', '),
-    complement,
-    district,
-    [city, state].filter(Boolean).join(' - '),
-    zipCode,
-  ].filter(Boolean);
-
-  return parts.length ? parts.join(', ') : null;
-}
+import { buildStoreAddressText } from '../utils/address.js';
 
 // POST /stores/deliveries
 // Cria uma nova entrega para a loja autenticada. Nenhum rider é atribuído

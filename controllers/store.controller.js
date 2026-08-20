@@ -3,6 +3,8 @@ import jsonwebtoken from 'jsonwebtoken';
 import Store from '../models/store.js';
 import { generateVerificationCode,sendStoreVerificationAccountEmail,sendStoreAccountVerifiedEmail,sendStorePasswordResetEmail }  from '../utils/sendEmailV2.js'
 import cloudinary from '../utils/cloudinary.js';
+import { geocodeAddress } from '../utils/googleMaps.js';
+import { buildStoreAddressText } from '../utils/address.js';
 
 
 export const register = async (req, res) => {
@@ -294,24 +296,70 @@ export const updateProfile = async (req, res) => {
     if (phone !== undefined) store.phone = phone;
     if (doc !== undefined) store.doc = doc || null;
 
+    // true quando o endereço foi salvo mas não conseguimos geocodificar
+    // (endereço não encontrado pelo Google, ou falha na chamada) — o front
+    // pode usar isso para avisar a loja de forma não-bloqueante.
+    let locationWarning = false;
+
     if (address !== undefined && address !== null) {
-      // merge parcial: só sobrescreve campos enviados
-      store.address = {
-        street: address.street !== undefined ? address.street : store.address?.street,
-        number: address.number !== undefined ? address.number : store.address?.number,
-        complement: address.complement !== undefined ? address.complement : store.address?.complement,
-        district: address.district !== undefined ? address.district : store.address?.district,
-        city: address.city !== undefined ? address.city : store.address?.city,
-        state: address.state !== undefined ? address.state : store.address?.state,
-        zipCode: address.zipCode !== undefined ? address.zipCode : store.address?.zipCode,
-        latitude: address.latitude !== undefined ? address.latitude : store.address?.latitude,
-        longitude: address.longitude !== undefined ? address.longitude : store.address?.longitude,
+      const previousAddress = store.address ? store.address.toObject() : {};
+      const ADDRESS_TEXT_FIELDS = ['street', 'number', 'complement', 'district', 'city', 'state', 'zipCode'];
+
+      // merge parcial: só sobrescreve campos de texto enviados. A coordenada
+      // nunca vem do cliente — é sempre derivada do texto via geocodificação
+      // logo abaixo, para não haver risco de lat/lng divergir do endereço.
+      const mergedAddress = {
+        street: address.street !== undefined ? address.street : previousAddress.street,
+        number: address.number !== undefined ? address.number : previousAddress.number,
+        complement: address.complement !== undefined ? address.complement : previousAddress.complement,
+        district: address.district !== undefined ? address.district : previousAddress.district,
+        city: address.city !== undefined ? address.city : previousAddress.city,
+        state: address.state !== undefined ? address.state : previousAddress.state,
+        zipCode: address.zipCode !== undefined ? address.zipCode : previousAddress.zipCode,
+        latitude: previousAddress.latitude,
+        longitude: previousAddress.longitude,
       };
+
+      const addressTextChanged = ADDRESS_TEXT_FIELDS.some(
+        (field) => (mergedAddress[field] || '') !== (previousAddress[field] || '')
+      );
+      const missingLocation = previousAddress.latitude == null || previousAddress.longitude == null;
+
+      store.address = mergedAddress;
+
+      // Só chama o Google quando o texto mudou (ou nunca tivemos coordenada
+      // ainda) — evita geocodificar de novo a cada salvamento de perfil.
+      if (addressTextChanged || missingLocation) {
+        const addressText = buildStoreAddressText(mergedAddress);
+
+        if (addressText) {
+          try {
+            const geocoded = await geocodeAddress(addressText);
+
+            if (geocoded) {
+              store.address.latitude = geocoded.latitude;
+              store.address.longitude = geocoded.longitude;
+            } else if (addressTextChanged) {
+              // Endereço mudou e o Google não encontrou: não faz sentido
+              // manter a coordenada antiga, ela apontaria pro lugar errado.
+              store.address.latitude = null;
+              store.address.longitude = null;
+              locationWarning = true;
+            }
+          } catch (error) {
+            console.error('Erro ao geocodificar endereço da loja:', error);
+            // Não bloqueia o salvamento do perfil por causa de uma falha do Google.
+            if (addressTextChanged) {
+              locationWarning = true;
+            }
+          }
+        }
+      }
     }
 
     await store.save();
 
-    return res.status(200).json(store);
+    return res.status(200).json({ ...store.toObject(), locationWarning });
   } catch (error) {
     console.error('Erro no updateProfile:', error);
     return res.status(500).json({ error: 'Erro interno do servidor.' });
@@ -369,37 +417,3 @@ export const uploadAvatar = async (req, res) => {
     return res.status(500).json({ error: 'Erro interno do servidor.' });
   }
 };
-
-export const updateLocation = async (req, res) => {
-
-  try {
-    const storeId = req.user?.id;
-    const { latitude, longitude } = req.body;
-
-    const store = await Store.findById(storeId).select(
-      'name email phone avatar doc active emailVerifiedAt address '
-    );
-
-    if (!store) {
-      return res.status(404).json({ error: 'Loja não encontrada.' });
-    }
-
-    if (!store.emailVerifiedAt) {
-      return res.status(403).json({ error: 'Conta ainda não verificada.' });
-    }
-
-    if (store.active === false) {
-      return res.status(403).json({ error: 'Conta desativada.' });
-    }
-
-    store.address.latitude = latitude;
-    store.address.longitude = longitude;
-    await store.save();
-
-    return res.status(200).json(store);
-
-  } catch (error) {
-    console.error('Erro no updateLocation:', error);
-    return res.status(500).json({ error: 'Erro interno do servidor.' });
-  }
-}

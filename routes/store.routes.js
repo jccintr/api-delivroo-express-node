@@ -10,7 +10,7 @@ import {
     accountVerificationValidator,
     resetPasswordValidator,
     updateProfileValidator,
-    updateLocationValidator
+    
 } from '../validators/store.validator.js'
 import { createDeliveryValidator } from '../validators/delivery.validator.js';
 import { uploadAvatar as uploadMiddleware } from '../middlewares/upload.avatar.js';
@@ -23,7 +23,6 @@ router.post('/login', loginValidator, validate, StoreController.login);
 router.get('/me', AuthStore, StoreController.validateToken);
 router.patch('/me', AuthStore, updateProfileValidator, validate, StoreController.updateProfile);
 router.patch('/me/avatar', AuthStore,uploadMiddleware.single('avatar'),StoreController.uploadAvatar);
-router.patch('/me/location', AuthStore, updateLocationValidator, validate, StoreController.updateLocation);
 router.post('/verify-account',AuthStore, accountVerificationValidator, validate,StoreController.verifyAccount);
 router.post('/verify-account/resend',AuthStore,StoreController.resendAccountVerificationCode);
 router.post('/password/request',StoreController.requestPasswordCode);
