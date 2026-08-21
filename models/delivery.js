@@ -46,7 +46,7 @@ const deliverySchema = new mongoose.Schema({
   notes:         { type: String, required: false },
   payment:       { type: String, enum: ['Dinheiro','Cartão Crédito','Cartão Débito','Pago','Nada a Pagar'], default: 'Dinheiro'},
   cashChange:    { type: Number, default: 0 },
-  amountDue:  { type: Number, default: 0, min: 0 }, 
+  amountDue:     { type: Number, default: 0, min: 0 }, 
 },
 riderPayout: {
   type: Number,
