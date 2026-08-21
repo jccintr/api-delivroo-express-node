@@ -3,6 +3,17 @@ import Delivery from '../models/delivery.js';
 import { distanceBetween } from '../utils/googleMaps.js';
 import { buildStoreAddressText } from '../utils/address.js';
 
+// TODO: substituir por um cálculo real (baseado em distância, categoria do
+// pacote, demanda/hora, taxa mínima etc.) quando essa regra de negócio for
+// definida. Por enquanto gera um valor aleatório só para termos o dado
+// preenchido e podermos avançar no front do rider.
+function calculateRiderPayout() {
+  const MIN_PAYOUT = 6;
+  const MAX_PAYOUT = 25;
+  const value = MIN_PAYOUT + Math.random() * (MAX_PAYOUT - MIN_PAYOUT);
+  return Math.round(value * 100) / 100;
+}
+
 // POST /stores/deliveries
 // Cria uma nova entrega para a loja autenticada. Nenhum rider é atribuído
 // neste momento (fica como null, para atribuição/aceite posterior).
@@ -69,6 +80,7 @@ export const createDelivery = async (req, res) => {
       },
       // distancia é armazenada em quilômetros, com 2 casas decimais
       distancia: Math.round((distanceInfo.meters / 1000) * 100) / 100,
+      riderPayout: calculateRiderPayout(),
       package: {
         description: pkg.description,
         category: pkg.category,
@@ -77,6 +89,7 @@ export const createDelivery = async (req, res) => {
         declaredvalue: pkg.declaredvalue,
         notes: pkg.notes,
         payment: pkg.payment,
+        amountDue: pkg.amountDue,
         cashChange: pkg.cashChange,
       },
       events: [{ data: new Date(), descricao: 'Entrega criada pela loja' }],
@@ -87,6 +100,24 @@ export const createDelivery = async (req, res) => {
     return res.status(201).json(delivery);
   } catch (error) {
     console.error('Erro no createDelivery:', error);
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};
+
+// GET /riders/deliveries/available
+// Lista entregas com status "disponível" (status: 0) e sem rider atribuído,
+// para o app do entregador exibir na tela principal. Inclui os dados da
+// loja (nome, telefone, avatar) para o rider saber quem está solicitando.
+export const listAvailableDeliveries = async (req, res) => {
+  try {
+    const deliveries = await Delivery.find({ status: 0, rider: null })
+      .populate('store', 'name avatar address.district')
+      .sort({ createdAt: -1 })
+      .limit(50); // evita payload gigante se acumular muita entrega parada
+
+    return res.status(200).json(deliveries);
+  } catch (error) {
+    console.error('Erro no listAvailableDeliveries:', error);
     return res.status(500).json({ error: 'Erro interno do servidor.' });
   }
 };

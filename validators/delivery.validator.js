@@ -53,15 +53,19 @@ export const createDeliveryValidator = [
     .optional()
     .isIn(PAYMENT_METHODS).withMessage('Forma de pagamento inválida'),
 
+  body('package.amountDue')
+    .optional({ nullable: true })
+    .isFloat({ min: 0 }).withMessage('Valor a receber do cliente inválido'),
+
   body('package.cashChange')
     .optional({ nullable: true })
-    .isFloat({ min: 0 }).withMessage('Valor para troco inválido'),
+    .isFloat({ min: 0 }).withMessage('Valor de troco inválido'),
 
   body('destino.latitude')
-  .optional({ nullable: true })
-  .isFloat({ min: -90, max: 90 }).withMessage('Latitude inválida'),
+    .notEmpty().withMessage('Latitude do endereço de entrega é obrigatória')
+    .isFloat({ min: -90, max: 90 }).withMessage('Latitude inválida'),
 
   body('destino.longitude')
-  .optional({ nullable: true })
-  .isFloat({ min: -180, max: 180 }).withMessage('Longitude inválida'),
+    .notEmpty().withMessage('Longitude do endereço de entrega é obrigatória')
+    .isFloat({ min: -180, max: 180 }).withMessage('Longitude inválida'),
 ];
