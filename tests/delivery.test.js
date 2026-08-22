@@ -24,7 +24,7 @@ describe('delivery Routes', () => {
      
       expect(res.status).toBe(401);
       expect(res.body.error).toBe('Não autorizado');
-    });/*
+    });
     it('deve retornar 400 quando destino não for informado', async () => {
       const {token} = await createStoreWithToken({ password: '123456' });
       const delivery = await createDelivery();
@@ -37,7 +37,7 @@ describe('delivery Routes', () => {
       expect(res.body.error).toBe('Dados inválidos');
       expect(res.body.details).toBeInstanceOf(Array);
       expect(res.body.details[0].message).toBe('Dados do destinatário são obrigatórios');
-    });*/
+    });
     it('deve retornar 400 quando o nome do destino não for informado', async () => {
       const { token } = await createStoreWithToken({ password: '123456' });
       const delivery = await createDelivery();
