@@ -63,9 +63,9 @@ export const createDeliveryValidator = [
 
   body('destino.latitude')
     .notEmpty().withMessage('Latitude do endereço de entrega é obrigatória')
-    .isFloat({ min: -90, max: 90 }).withMessage('Latitude inválida'),
+    .isFloat({ min: -90, max: 90 }).withMessage('Latitude do destino inválida'),
 
   body('destino.longitude')
     .notEmpty().withMessage('Longitude do endereço de entrega é obrigatória')
-    .isFloat({ min: -180, max: 180 }).withMessage('Longitude inválida'),
+    .isFloat({ min: -180, max: 180 }).withMessage('Longitude do destino inválida'),
 ];
