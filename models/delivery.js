@@ -41,7 +41,7 @@ const deliverySchema = new mongoose.Schema({
   description:   { type: String, required: true },  
   category :     { type: String, enum: ['Comida', 'Documentos', 'Pacote', 'Medicamentos', 'Peças','Outros'],default: 'Comida'},
   quantity:      { type: Number, required: true, min: 1, default: 1 },
-  weight:        { type: Number, required: false },   // kg
+  weight:        { type: Number, required: false, default: null },   // kg
   declaredvalue: { type: Number, default: 0 },
   notes:         { type: String, required: false },
   payment:       { type: String, enum: ['Dinheiro','Cartão Crédito','Cartão Débito','Pago','Nada a Pagar'], default: 'Dinheiro'},

@@ -12,12 +12,14 @@ export async function createStore(overrides = {}) {
 
   const password = overrides.password || '123456';
   const hashedPassword = await bcryptjs.hash(password, 10);
-
+ 
+  const storeAddress =  { street: 'Rua Teste', number: '123', complement: 'Complemento', district:'Centro' , city:'Belo Horizonte', state:'MG', zipCode:'12345-678', latitude: -22.4732738, longitude: -45.6184117 };
   const store = await Store.create({
       name: 'Store Teste',
       email: `store${Date.now()}@test.com`,
       password: hashedPassword,
       phone: '+5511999999999',
+      address: storeAddress,
       ...overrides,
       password: overrides.password  ? await bcryptjs.hash(overrides.password, 10) : hashedPassword,
  });
