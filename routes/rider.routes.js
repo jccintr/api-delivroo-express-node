@@ -23,6 +23,7 @@ router.patch('/me/document', AuthRider,uploadMiddleware.single('document'),Rider
 router.patch('/me/status', AuthRider,RiderController.toggleOnlineStatus);
 router.patch('/me/vehicle',AuthRider,updateVehicleValidator, validate,RiderController.updateVehicle);
 router.get('/deliveries/available', AuthRider, DeliveryController.listAvailableDeliveries);
+router.get('/deliveries/:id', AuthRider, DeliveryController.getDelivery);
 
 export default router;
 

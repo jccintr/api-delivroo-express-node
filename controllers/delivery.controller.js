@@ -144,3 +144,7 @@ export const listAvailableDeliveries = async (req, res) => {
     return res.status(500).json({ error: 'Erro interno do servidor.' });
   }
 };
+
+export const getDelivery = async (req, res) => {
+
+}
