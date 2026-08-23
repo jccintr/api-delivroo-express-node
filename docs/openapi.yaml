@@ -15,6 +15,8 @@ tags:
     description: Autenticação e gestão de administradores
   - name: Stores
     description: Autenticação e perfil das lojas
+  - name: Deliveries
+    description: Criação e listagem de entregas (loja e rider)
 
 paths:
   # =====================
@@ -1031,6 +1033,149 @@ paths:
         '500':
           description: Erro interno do servidor
 
+  # =====================
+  # DELIVERIES
+  # =====================
+  /stores/deliveries:
+    post:
+      tags: [Deliveries, Stores]
+      summary: Criar entrega (loja)
+      description: |
+        Cria uma nova entrega para a loja autenticada.
+        O rider ainda não é atribuído (`rider: null`, `status: 0` = disponível).
+
+        Requisitos da loja:
+        - Conta ativa
+        - E-mail verificado (`emailVerifiedAt`)
+        - Endereço completo com `latitude` e `longitude` cadastrados
+
+        O destino deve vir com coordenadas (ex.: Google Places no front).
+        A API calcula a distância (km) entre origem (loja) e destino via Google Distance Matrix
+        e define um `riderPayout` preliminar.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDeliveryRequest'
+            example:
+              destino:
+                nome: Maria Souza
+                telefone: "(35) 98765-4321"
+                address: "Rua Altino Rosa, 123, Horizonte Azul, Brazópolis - MG"
+                latitude: -22.4735
+                longitude: -45.6168
+              package:
+                description: "2 lanches + refrigerante"
+                category: Comida
+                quantity: 2
+                weight: 1.2
+                declaredvalue: 45.90
+                notes: "Entregar no portão dos fundos"
+                payment: Dinheiro
+                amountDue: 36
+                cashChange: 4.10
+      responses:
+        '201':
+          description: Entrega criada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Delivery'
+        '400':
+          description: |
+            Dados inválidos (validação) ou loja sem endereço/localização cadastrados.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/ValidationError'
+                  - $ref: '#/components/schemas/Error'
+              examples:
+                validacao:
+                  summary: Validação
+                  value:
+                    error: Dados inválidos
+                    details:
+                      - field: destino.nome
+                        message: Nome do destinatário é obrigatório
+                enderecoLoja:
+                  summary: Loja sem localização
+                  value:
+                    error: Cadastre o endereço completo da loja (com localização) antes de criar uma entrega.
+        '401':
+          description: Não autorizado (token ausente ou inválido)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Não autorizado
+        '403':
+          description: Conta desativada ou e-mail ainda não verificado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                desativada:
+                  value:
+                    error: Conta desativada.
+                naoVerificada:
+                  value:
+                    error: Conta ainda não verificada.
+        '404':
+          description: Loja não encontrada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Loja não encontrada.
+        '422':
+          description: Não foi possível calcular a distância para o endereço informado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Não foi possível calcular a distância para o endereço informado. Verifique o endereço e tente novamente.
+        '500':
+          description: Erro interno do servidor
+
+  /riders/deliveries/available:
+    get:
+      tags: [Deliveries, Riders]
+      summary: Listar entregas disponíveis (rider)
+      description: |
+        Retorna até 50 entregas com `status: 0` (disponível) e sem rider atribuído,
+        ordenadas da mais recente para a mais antiga.
+        Inclui dados da loja (`name`, `avatar`, `address.district`) via populate.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Lista de entregas disponíveis
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Delivery'
+        '401':
+          description: Não autorizado (token de rider ausente ou inválido)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Não autorizado
+        '500':
+          description: Erro interno do servidor
+
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1553,6 +1698,247 @@ components:
           type: string
           description: JWT para autenticação nas rotas protegidas de store
           example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+
+    # ----- Delivery -----
+    CreateDeliveryRequest:
+      type: object
+      required: [destino, package]
+      properties:
+        destino:
+          $ref: '#/components/schemas/DeliveryDestinoInput'
+        package:
+          $ref: '#/components/schemas/DeliveryPackageInput'
+
+    DeliveryDestinoInput:
+      type: object
+      required: [nome, telefone, address, latitude, longitude]
+      properties:
+        nome:
+          type: string
+          example: Maria Souza
+        telefone:
+          type: string
+          example: "(35) 98765-4321"
+        address:
+          type: string
+          minLength: 8
+          description: Endereço completo (rua, número, bairro, cidade)
+          example: "Rua Altino Rosa, 123, Horizonte Azul, Brazópolis - MG"
+        latitude:
+          type: number
+          format: float
+          minimum: -90
+          maximum: 90
+          description: Obrigatória; não pode ser 0
+          example: -22.4735
+        longitude:
+          type: number
+          format: float
+          minimum: -180
+          maximum: 180
+          description: Obrigatória; não pode ser 0
+          example: -45.6168
+
+    DeliveryPackageInput:
+      type: object
+      required: [description]
+      properties:
+        description:
+          type: string
+          example: "2 lanches + refrigerante"
+        category:
+          type: string
+          enum: [Comida, Documentos, Pacote, Medicamentos, Peças, Outros]
+          example: Comida
+        quantity:
+          type: integer
+          minimum: 1
+          example: 2
+        weight:
+          type: number
+          format: float
+          minimum: 0
+          nullable: true
+          description: Peso em kg
+          example: 1.2
+        declaredvalue:
+          type: number
+          format: float
+          minimum: 0
+          nullable: true
+          example: 45.90
+        notes:
+          type: string
+          nullable: true
+          example: "Entregar no portão dos fundos"
+        payment:
+          type: string
+          enum: [Dinheiro, Cartão Crédito, Cartão Débito, Pago, Nada a Pagar]
+          example: Dinheiro
+        amountDue:
+          type: number
+          format: float
+          minimum: 0
+          nullable: true
+          description: Valor a receber do cliente
+          example: 36
+        cashChange:
+          type: number
+          format: float
+          minimum: 0
+          nullable: true
+          description: Troco
+          example: 4.10
+
+    DeliveryLocation:
+      type: object
+      properties:
+        address:
+          type: string
+          example: "Rua das Flores, 100, Centro, Brazópolis - MG"
+        latitude:
+          type: number
+          format: float
+          example: -22.4701
+        longitude:
+          type: number
+          format: float
+          example: -45.6102
+        nome:
+          type: string
+          description: Presente no destino
+          example: Maria Souza
+        telefone:
+          type: string
+          description: Presente no destino
+          example: "(35) 98765-4321"
+
+    DeliveryEvent:
+      type: object
+      properties:
+        data:
+          type: string
+          format: date-time
+        descricao:
+          type: string
+          example: Entrega criada pela loja
+        _id:
+          type: string
+
+    DeliveryStoreSummary:
+      type: object
+      description: Loja populada na listagem de disponíveis (campos parciais)
+      properties:
+        _id:
+          type: string
+        name:
+          type: string
+          example: Pizzaria do Centro
+        avatar:
+          type: string
+          nullable: true
+        address:
+          type: object
+          properties:
+            district:
+              type: string
+              example: Centro
+
+    Delivery:
+      type: object
+      properties:
+        _id:
+          type: string
+          example: "665f1a2b3c4d5e6f7a8b9c0d"
+        data:
+          type: string
+          format: date-time
+        store:
+          description: ObjectId da loja ou objeto populado (listagem available)
+          oneOf:
+            - type: string
+            - $ref: '#/components/schemas/DeliveryStoreSummary'
+        rider:
+          type: string
+          nullable: true
+          description: ObjectId do rider (null enquanto disponível)
+          example: null
+        origem:
+          $ref: '#/components/schemas/DeliveryLocation'
+        destino:
+          $ref: '#/components/schemas/DeliveryLocation'
+        distancia:
+          type: number
+          format: float
+          description: Distância em quilômetros (2 casas decimais)
+          example: 3.45
+        status:
+          type: integer
+          description: |
+            0 = disponível (sem rider).
+            Outros valores reservados para fluxo futuro (aceita, em rota, concluída, etc.).
+          example: 0
+        riderRating:
+          type: number
+          nullable: true
+          example: null
+        riderPayout:
+          type: number
+          format: float
+          description: Valor estimado a pagar ao entregador
+          example: 12.5
+        package:
+          type: object
+          properties:
+            description:
+              type: string
+            category:
+              type: string
+            quantity:
+              type: integer
+            weight:
+              type: number
+              nullable: true
+            declaredvalue:
+              type: number
+            notes:
+              type: string
+              nullable: true
+            payment:
+              type: string
+            amountDue:
+              type: number
+            cashChange:
+              type: number
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeliveryEvent'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ValidationError:
+      type: object
+      properties:
+        error:
+          type: string
+          example: Dados inválidos
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+                example: destino.nome
+              message:
+                type: string
+                example: Nome do destinatário é obrigatório
 
     # ----- Common -----
     MessageResponse:
