@@ -105,33 +105,43 @@ export const createDelivery = async (req, res) => {
   }
 };
 
+// Verifica se o rider existe e está apto a ver/aceitar entregas (ativo,
+// e-mail verificado, conta aprovada). Usado tanto em listAvailableDeliveries
+// quanto em getDelivery para não duplicar essa checagem em cada endpoint.
+async function findEligibleRider(riderId) {
+  const rider = await Rider.findById(riderId).select('name active emailVerifiedAt accountApprovedAt');
+
+  if (!rider) {
+    return { error: 'Entregador não encontrado.', status: 404 };
+  }
+
+  if (!rider.active) {
+    return { error: 'Conta desativada.', status: 403 };
+  }
+
+  if (!rider.emailVerifiedAt) {
+    return { error: 'Conta ainda não verificada.', status: 403 };
+  }
+
+  if (!rider.accountApprovedAt) {
+    return { error: 'Conta ainda não aprovada.', status: 403 };
+  }
+
+  return { rider };
+}
+
 // GET /riders/deliveries/available
 // Lista entregas com status "disponível" (status: 0) e sem rider atribuído,
 // para o app do entregador exibir na tela principal. Inclui os dados da
 // loja (nome, telefone, avatar) para o rider saber quem está solicitando.
 export const listAvailableDeliveries = async (req, res) => {
   try {
-    const riderId = req.user?.id 
+    const riderId = req.user?.id;
 
-    const rider = await Rider.findById(riderId).select('name active emailVerifiedAt accountApprovedAt');
-    
+    const { rider, error, status } = await findEligibleRider(riderId);
     if (!rider) {
-      return res.status(404).json({ error: 'Entregador não encontrado.' });
+      return res.status(status).json({ error });
     }
-
-    if (!rider.active) {
-      return res.status(403).json({ error: 'Conta desativada.' });
-    }
-
-    if (!rider.emailVerifiedAt) {
-      return res.status(403).json({ error: 'Conta ainda não verificada.' });
-    }
-
-    if (!rider.accountApprovedAt) {
-      return res.status(403).json({ error: 'Conta ainda não aprovada.' });
-    }
-    
-
 
     const deliveries = await Delivery.find({ status: 0, rider: null })
       .populate('store', 'name avatar address.district')
@@ -145,6 +155,38 @@ export const listAvailableDeliveries = async (req, res) => {
   }
 };
 
+// GET /riders/deliveries/:id
+// Detalhes de uma entrega específica, para a tela de "Detalhes da entrega"
+// (exibida ao tocar num card da lista de disponíveis), antes do rider
+// decidir se aceita. Não restringe por status/rider aqui — a checagem de
+// "ainda está disponível" é feita no momento do aceite (evita corrida entre
+// vários riders vendo a mesma entrega ao mesmo tempo), então esta rota
+// serve tanto para pré-visualizar uma entrega disponível quanto para
+// reabrir os detalhes de uma que o próprio rider já aceitou.
 export const getDelivery = async (req, res) => {
+  try {
+    const riderId = req.user?.id;
+    const { id } = req.params;
 
-}
+    const { rider, error, status } = await findEligibleRider(riderId);
+
+    
+    if (!rider) {
+      return res.status(status).json({ error });
+    }
+
+    const delivery = await Delivery.findById(id).populate('store', 'name avatar address.district');
+
+    if (!delivery) {
+      return res.status(404).json({ error: 'Entrega não encontrada.' });
+    }
+
+    return res.status(200).json(delivery);
+  } catch (error) {
+    if (error.name === 'CastError') {
+      return res.status(404).json({ error: 'Entrega não encontrada.' });
+    }
+    console.error('Erro no getDelivery:', error);
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};
