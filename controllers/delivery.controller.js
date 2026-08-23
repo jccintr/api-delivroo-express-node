@@ -1,5 +1,6 @@
 import Store from '../models/store.js';
 import Delivery from '../models/delivery.js';
+import Rider from '../models/rider.js';
 import { distanceBetween } from '../utils/googleMaps.js';
 import { buildStoreAddressText } from '../utils/address.js';
 
@@ -110,6 +111,28 @@ export const createDelivery = async (req, res) => {
 // loja (nome, telefone, avatar) para o rider saber quem está solicitando.
 export const listAvailableDeliveries = async (req, res) => {
   try {
+    const riderId = req.user?.id 
+
+    const rider = await Rider.findById(riderId).select('name active emailVerifiedAt accountApprovedAt');
+    
+    if (!rider) {
+      return res.status(404).json({ error: 'Entregador não encontrado.' });
+    }
+
+    if (!rider.active) {
+      return res.status(403).json({ error: 'Conta desativada.' });
+    }
+
+    if (!rider.emailVerifiedAt) {
+      return res.status(403).json({ error: 'Conta ainda não verificada.' });
+    }
+
+    if (!rider.accountApprovedAt) {
+      return res.status(403).json({ error: 'Conta ainda não aprovada.' });
+    }
+    
+
+
     const deliveries = await Delivery.find({ status: 0, rider: null })
       .populate('store', 'name avatar address.district')
       .sort({ createdAt: -1 })

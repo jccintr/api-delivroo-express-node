@@ -6,7 +6,7 @@ export async function createDelivery(overrides = {}) {
    const delivery = await Delivery.create({
        "store": store._id,
        "destino": {
-            "nome": "Maria Souza",
+            "nome": "Maria Souza " + Date.now(),
             "telefone": "(35) 98765-4321",
             "address": "Rua Altino Rosa, 123, Horizonte Azul, Brazópolis - MG",
             "latitude": -23.5615,
