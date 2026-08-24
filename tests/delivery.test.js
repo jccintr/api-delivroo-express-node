@@ -440,7 +440,7 @@ describe('delivery Routes', () => {
   // List Available Deliveries
   // =====================
   describe('GET /api/riders/deliveries/available', () => {
-      it('deve retornar 401 quando não autenticado (sem token)', async () => {
+    it('deve retornar 401 quando não autenticado (sem token)', async () => {
       const res = await request(app).get('/api/riders/deliveries/available');
 
       expect(res.status).toBe(401);
@@ -524,4 +524,129 @@ describe('delivery Routes', () => {
     });
     
   });
+  // =====================
+  // Rider Get Delivery By id
+  // =====================
+  describe('GET /api/riders/deliveries/:id', () => {
+    it('deve retornar 401 quando não autenticado (sem token)', async () => {
+      const deliveryId = '6a8a288269c7d67379404c00';
+      const res = await request(app).get(`/api/riders/deliveries/${deliveryId}`);
+
+      expect(res.status).toBe(401);
+      expect(res.body.error).toBe('Não autorizado');
+    });
+    it('deve retornar 401 quando token for inválido', async () => {
+     const { token } = await createRiderWithToken({ password: '123456' });   
+      const deliveryId = '6a8a288269c7d67379404c00';
+      const res = await request(app).get(`/api/riders/deliveries/${deliveryId}`)
+            .set('Authorization', `Bearer ${token}-invalido`);
+     
+      expect(res.status).toBe(401);
+      expect(res.body.error).toBe('Não autorizado');
+    });
+    it('deve retornar 403 quando a conta estiver desativada', async () => {
+       const deliveryId = '6a8a288269c7d67379404c00';
+       const { token, rider } = await createRiderWithToken({ password: '123456' });
+       await Rider.findByIdAndUpdate(rider._id, { active: false });
+
+       const res = await request(app).get(`/api/riders/deliveries/${deliveryId}`)
+            .set('Authorization', `Bearer ${token}`);
+      
+       expect(res.status).toBe(403);
+       expect(res.body.error).toBe('Conta desativada.');
+    });
+    it('deve retornar 403 quando a conta não estiver verificada', async () => {
+      const deliveryId = '6a8a288269c7d67379404c00';
+      const { token, rider } = await createRiderWithToken({ password: '123456' });
+      await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: null, active: true });
+
+      const res = await request(app).get(`/api/riders/deliveries/${deliveryId}`)
+            .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(403);
+      expect(res.body.error).toBe('Conta ainda não verificada.');
+
+    });
+    it('deve retornar 403 quando a conta ainda não estiver aprovada', async () => {
+      const deliveryId = '6a8a288269c7d67379404c00';
+      const { token, rider } = await createRiderWithToken({ password: '123456' });
+
+      await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true });
+
+      const res = await request(app).get(`/api/riders/deliveries/${deliveryId}`)
+            .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(403);
+      expect(res.body.error).toBe('Conta ainda não aprovada.');
+    });
+    it('deve retornar 404 quando a rider não existir', async () => {
+      const deliveryId = '6a8a288269c7d67379404c00';
+      const { token, rider } = await createRiderWithToken({ password: '123456' });
+
+      await Rider.findByIdAndDelete(rider._id);
+
+      const res = await request(app).get(`/api/riders/deliveries/${deliveryId}`)
+            .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe('Entregador não encontrado.');
+    });
+    it('deve retornar 404 quando a entrega não existir', async () => {
+      const deliveryId = '6a8a288269c7d67379404c00';
+      const { token, rider } = await createRiderWithToken({ password: '123456' });
+
+      await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
+
+      const res = await request(app).get(`/api/riders/deliveries/${deliveryId}`)
+            .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe('Entrega não encontrada.');
+    });
+    it('deve retornar 403 quando a entrega já tiver sido aceita por outro rider diferente', async () => {
+      const { token, rider } = await createRiderWithToken();
+      await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
+      const delivery = await createDelivery();
+      const anotherRider = await createRider();
+
+      await Delivery.findByIdAndUpdate(delivery._id, { rider: anotherRider._id, status: 1 });
+
+       const res = await request(app).get(`/api/riders/deliveries/${delivery._id}`)
+            .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(403);
+      expect(res.body.error).toBe('Corrida indisponível no momento.');
+
+    });
+    it('deve retornar 200 e a entrega quando a entrega ainda estiver disponível e o esntregador devidamente verificado, ativo e aprovado', async () => {
+      const { token, rider } = await createRiderWithToken();
+      await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
+      const delivery = await createDelivery();
+
+      const res = await request(app).get(`/api/riders/deliveries/${delivery._id}`)
+            .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe(0);
+      expect(res.body._id).toBe(delivery._id.toString());
+      expect(res.body.rider).toBeNull();
+      expect(res.body.distancia).toBeGreaterThan(0);
+      expect(res.body.events).toBeInstanceOf(Array);
+      expect(res.body.riderPayout).toBeGreaterThan(0);
+    });
+     
+  });
 });
+
+
+
+// delivery status
+//-2: entrega cancelada pelo entregador => motivo
+//-1: entrega cancelada pela loja => motivo
+// 0: entrega solicitada
+// 1: entrega aceita pelo entregador
+// 2: entrega retirada pelo entregador
+// 3: entregador a caminho do destino
+// 4: entrega entregue
+// 5: entrega devolvida a loja => motivo
+

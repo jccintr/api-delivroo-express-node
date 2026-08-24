@@ -181,6 +181,20 @@ export const getDelivery = async (req, res) => {
       return res.status(404).json({ error: 'Entrega não encontrada.' });
     }
 
+    // verificar o status
+    // verificar se o rider tem permissão para ver essa entrega (status ==0, rider == null ou rider == id do rider logado)
+
+   // if (delivery.status !== 0 || (delivery.rider && delivery.rider.toString() !== riderId)) {
+   //   return res.status(403).json({ error: 'Entrega indisponível.' });
+   // }
+
+    const isAvailable = delivery.status === 0 && delivery.rider == null;
+    const isOwnDelivery = delivery.rider != null && delivery.rider.equals(riderId);
+
+    if (!isAvailable && !isOwnDelivery) {
+      return res.status(403).json({ error: 'Corrida indisponível no momento.' });
+    }
+
     return res.status(200).json(delivery);
   } catch (error) {
     if (error.name === 'CastError') {
