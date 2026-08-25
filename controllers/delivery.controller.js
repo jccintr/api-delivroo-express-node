@@ -220,6 +220,15 @@ async function transitionAsRider({ riderId, deliveryId, filter, update, conflict
   ).populate('store', 'name avatar address.district');
 
   if (!delivery) {
+    // O findOneAndUpdate acima retorna null tanto quando a entrega não
+    // existe quanto quando existe mas está num status diferente do
+    // esperado — precisamos diferenciar os dois pra dar o erro certo.
+    // Essa checagem extra só roda no caminho de falha, então não reabre
+    // a janela de corrida da transição em si (que já é atômica acima).
+    const exists = await Delivery.exists({ _id: deliveryId });
+    if (!exists) {
+      return { error: 'Entrega não encontrada.', status: 404 };
+    }
     return { error: conflictMessage, status: 409 };
   }
 

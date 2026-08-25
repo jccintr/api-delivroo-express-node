@@ -616,7 +616,7 @@ describe('delivery Routes', () => {
             .set('Authorization', `Bearer ${token}`);
 
       expect(res.status).toBe(403);
-      expect(res.body.error).toBe('Corrida indisponível no momento.');
+      expect(res.body.error).toBe('Você não tem permissão para ver esta entrega.');
 
     });
     it('deve retornar 200 e a entrega quando a entrega ainda estiver disponível e o esntregador devidamente verificado, ativo e aprovado', async () => {
@@ -636,6 +636,151 @@ describe('delivery Routes', () => {
       expect(res.body.riderPayout).toBeGreaterThan(0);
     });
      
+  });
+    // =====================
+  // ACCEPT DELIVERY
+  // =====================
+  describe('POST /api/riders/deliveries/:id/accept', () => {
+    it('deve retornar 401 quando não autenticado (sem token)', async () => {
+      const deliveryId = '6a8a288269c7d67379404c00';
+      const res = await request(app).post(`/api/riders/deliveries/${deliveryId}/accept`);
+
+      expect(res.status).toBe(401);
+      expect(res.body.error).toBe('Não autorizado');
+    });
+
+    it('deve retornar 401 quando token for inválido', async () => {
+      const { token } = await createRiderWithToken({ password: '123456' });
+      const deliveryId = '6a8a288269c7d67379404c00';
+
+      const res = await request(app).post(`/api/riders/deliveries/${deliveryId}/accept`)
+            .set('Authorization', `Bearer ${token}-invalido`);
+
+      expect(res.status).toBe(401);
+      expect(res.body.error).toBe('Não autorizado');
+    });
+
+    it('deve retornar 403 quando a conta estiver desativada', async () => {
+      const deliveryId = '6a8a288269c7d67379404c00';
+      const { token, rider } = await createRiderWithToken({ password: '123456' });
+      await Rider.findByIdAndUpdate(rider._id, { active: false });
+
+      const res = await request(app).post(`/api/riders/deliveries/${deliveryId}/accept`)
+            .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(403);
+      expect(res.body.error).toBe('Conta desativada.');
+    });
+
+    it('deve retornar 403 quando a conta não estiver verificada', async () => {
+      const deliveryId = '6a8a288269c7d67379404c00';
+      const { token, rider } = await createRiderWithToken({ password: '123456' });
+      await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: null, active: true });
+
+      const res = await request(app).post(`/api/riders/deliveries/${deliveryId}/accept`)
+            .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(403);
+      expect(res.body.error).toBe('Conta ainda não verificada.');
+    });
+
+    it('deve retornar 403 quando a conta ainda não estiver aprovada', async () => {
+      const deliveryId = '6a8a288269c7d67379404c00';
+      const { token, rider } = await createRiderWithToken({ password: '123456' });
+      await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true });
+
+      const res = await request(app).post(`/api/riders/deliveries/${deliveryId}/accept`)
+            .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(403);
+      expect(res.body.error).toBe('Conta ainda não aprovada.');
+    });
+
+    it('deve retornar 404 quando a rider não existir', async () => {
+      const deliveryId = '6a8a288269c7d67379404c00';
+      const { token, rider } = await createRiderWithToken({ password: '123456' });
+      await Rider.findByIdAndDelete(rider._id);
+
+      const res = await request(app).post(`/api/riders/deliveries/${deliveryId}/accept`)
+            .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe('Entregador não encontrado.');
+    });
+
+    it('deve retornar 404 quando a entrega não existir', async () => {
+      const deliveryId = '6a8a288269c7d67379404c00';
+      const { token, rider } = await createRiderWithToken({ password: '123456' });
+      await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
+
+      const res = await request(app).post(`/api/riders/deliveries/${deliveryId}/accept`)
+            .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe('Entrega não encontrada.');
+    });
+
+    it('deve retornar 409 quando a entrega já não estiver mais disponível (já aceita por outro rider)', async () => {
+      const { token, rider } = await createRiderWithToken({ password: '123456' });
+      await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
+      const anotherRider = await createRider();
+      const delivery = await createDelivery({ status: 1, rider: anotherRider._id });
+
+      const res = await request(app).post(`/api/riders/deliveries/${delivery._id}/accept`)
+            .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(409);
+      expect(res.body.error).toBe('Esta entrega não está mais disponível.');
+    });
+
+    it('deve retornar 409 quando a entrega já tiver sido cancelada pela loja', async () => {
+      const { token, rider } = await createRiderWithToken({ password: '123456' });
+      await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
+      const delivery = await createDelivery({ status: 6, cancelReason: 'Pedido duplicado' });
+
+      const res = await request(app).post(`/api/riders/deliveries/${delivery._id}/accept`)
+            .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(409);
+      expect(res.body.error).toBe('Esta entrega não está mais disponível.');
+    });
+
+    it('deve aceitar a entrega com sucesso: status 0 → 1, rider atribuído, acceptedAt preenchido e evento registrado', async () => {
+      const { token, rider } = await createRiderWithToken({ password: '123456' });
+      await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
+      const delivery = await createDelivery();
+
+      const res = await request(app).post(`/api/riders/deliveries/${delivery._id}/accept`)
+            .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe(1);
+      expect(res.body.rider).toBe(rider._id.toString());
+      expect(res.body.acceptedAt).not.toBeNull();
+      expect(res.body.events).toHaveLength(1); // a factory de teste não popula o evento de criação, só o aceite adiciona um
+      expect(res.body.events[0].descricao).toBe('Entrega aceita pelo entregador');
+      // dados da loja populados, para o rider identificar quem solicitou
+      expect(res.body.store).toHaveProperty('name');
+    });
+
+    it('deve retornar 409 na segunda tentativa quando dois riders aceitam a mesma entrega em sequência (evita corrida)', async () => {
+      const { token: tokenA, rider: riderA } = await createRiderWithToken({ password: '123456' });
+      await Rider.findByIdAndUpdate(riderA._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
+      const { token: tokenB, rider: riderB } = await createRiderWithToken({ password: '123456' });
+      await Rider.findByIdAndUpdate(riderB._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
+      const delivery = await createDelivery();
+
+      const resA = await request(app).post(`/api/riders/deliveries/${delivery._id}/accept`)
+            .set('Authorization', `Bearer ${tokenA}`);
+      const resB = await request(app).post(`/api/riders/deliveries/${delivery._id}/accept`)
+            .set('Authorization', `Bearer ${tokenB}`);
+
+      expect(resA.status).toBe(200);
+      expect(resA.body.rider).toBe(riderA._id.toString());
+
+      expect(resB.status).toBe(409);
+      expect(resB.body.error).toBe('Esta entrega não está mais disponível.');
+    });
   });
 });
 
