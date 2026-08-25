@@ -24,6 +24,7 @@ router.patch('/me/document', AuthRider,uploadMiddleware.single('document'),Rider
 router.patch('/me/status', AuthRider,RiderController.toggleOnlineStatus);
 router.patch('/me/vehicle',AuthRider,updateVehicleValidator, validate,RiderController.updateVehicle);
 router.get('/deliveries/available', AuthRider, DeliveryController.listAvailableDeliveries);
+router.get('/deliveries/active', AuthRider, DeliveryController.listActiveDeliveries);
 router.get('/deliveries/:id', AuthRider, DeliveryController.getDelivery);
 router.post('/deliveries/:id/accept', AuthRider, DeliveryController.acceptDelivery);
 router.post('/deliveries/:id/pickup', AuthRider, DeliveryController.pickupDelivery);

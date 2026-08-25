@@ -155,6 +155,32 @@ export const listAvailableDeliveries = async (req, res) => {
   }
 };
 
+// GET /riders/deliveries/active
+// Lista as entregas do próprio rider que estão em andamento (status 1, 2
+// ou 3 — aceita, retirada, a caminho), para a tela Home exibir junto com
+// as disponíveis. Hoje um rider só deve ter uma entrega ativa por vez (ver
+// acceptDelivery), mas a rota já devolve uma lista pensando em, no futuro,
+// permitir múltiplas entregas simultâneas sem precisar mudar o contrato.
+export const listActiveDeliveries = async (req, res) => {
+  try {
+    const riderId = req.user?.id;
+
+    const { rider, error, status } = await findEligibleRider(riderId);
+    if (!rider) {
+      return res.status(status).json({ error });
+    }
+
+    const deliveries = await Delivery.find({ rider: riderId, status: { $in: [1, 2, 3] } })
+      .populate('store', 'name avatar address.district')
+      .sort({ acceptedAt: -1 });
+
+    return res.status(200).json(deliveries);
+  } catch (error) {
+    console.error('Erro no listActiveDeliveries:', error);
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};
+
 // GET /riders/deliveries/:id
 // Detalhes de uma entrega específica, para a tela de "Detalhes da entrega"
 // (exibida ao tocar num card da lista de disponíveis), antes do rider

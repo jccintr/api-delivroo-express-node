@@ -525,6 +525,116 @@ describe('delivery Routes', () => {
     });
     
   });
+    // =====================
+  // Rider Get Active Deliveries
+  // =====================
+  describe('GET /api/riders/deliveries/active', () => {
+    it('deve retornar 401 quando não autenticado (sem token)', async () => {
+      const res = await request(app).get('/api/riders/deliveries/active');
+
+      expect(res.status).toBe(401);
+      expect(res.body.error).toBe('Não autorizado');
+    });
+    it('deve retornar 401 quando token for inválido', async () => {
+     const { token } = await createRiderWithToken({ password: '123456' });   
+     const res = await request(app)
+         .get('/api/riders/deliveries/active')
+         .set('Authorization', `Bearer ${token}-invalido`);
+     
+      expect(res.status).toBe(401);
+      expect(res.body.error).toBe('Não autorizado');
+    });
+    it('deve retornar 403 quando a conta estiver desativada', async () => {
+        const { token, rider } = await createRiderWithToken({ password: '123456' });
+
+        await Rider.findByIdAndUpdate(rider._id, { active: false });
+
+        const res = await request(app)
+         .get('/api/riders/deliveries/active')
+         .set('Authorization', `Bearer ${token}`);
+
+         expect(res.status).toBe(403);
+         expect(res.body.error).toBe('Conta desativada.');
+    });
+    it('deve retornar 403 quando a conta não estiver verificada', async () => {
+        const { token, rider } = await createRiderWithToken({ password: '123456' });
+
+        await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: null, active: true });
+
+        const res = await request(app)
+         .get('/api/riders/deliveries/active')
+         .set('Authorization', `Bearer ${token}`);
+
+         expect(res.status).toBe(403);
+         expect(res.body.error).toBe('Conta ainda não verificada.');
+    });
+    it('deve retornar 403 quando a conta ainda não estiver aprovada', async () => {
+        const { token, rider } = await createRiderWithToken({ password: '123456' });
+
+        await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true });
+
+        const res = await request(app)
+         .get('/api/riders/deliveries/active')
+         .set('Authorization', `Bearer ${token}`);
+
+         expect(res.status).toBe(403);
+         expect(res.body.error).toBe('Conta ainda não aprovada.');
+    });
+    it('deve retornar 404 quando a rider não existir', async () => {
+        const { token, rider } = await createRiderWithToken({ password: '123456' });
+
+        await Rider.findByIdAndDelete(rider._id);
+
+        const res = await request(app)
+         .get('/api/riders/deliveries/active')
+         .set('Authorization', `Bearer ${token}`);
+
+         expect(res.status).toBe(404);
+         expect(res.body.error).toBe('Entregador não encontrado.');
+    });
+    it('deve retornar 200 com array vazio quando o rider não tiver nenhuma entrega em andamento', async () => {
+        const { token, rider } = await createRiderWithToken({ password: '123456' });
+        await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
+        await createDelivery(); // disponível, não é do rider
+        await createDelivery({ status: 4, rider: rider._id }); // já entregue, não conta como "ativa"
+
+        const res = await request(app)
+            .get('/api/riders/deliveries/active')
+            .set('Authorization', `Bearer ${token}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body).toBeInstanceOf(Array);
+        expect(res.body.length).toBe(0);
+    });
+    it('deve retornar 200 e as entregas do próprio rider com status 1, 2 ou 3, sem trazer as de outro rider', async () => {
+        const { token, rider } = await createRiderWithToken({ password: '123456' });
+        await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
+        const anotherRider = await createRider();
+
+        const accepted = await createDelivery({ status: 1, rider: rider._id });
+        const pickedUp = await createDelivery({ status: 2, rider: rider._id });
+        const dispatched = await createDelivery({ status: 3, rider: rider._id });
+        await createDelivery({ status: 4, rider: rider._id }); // entregue, não deve aparecer
+        await createDelivery({ status: 1, rider: anotherRider._id }); // de outro rider, não deve aparecer
+        await createDelivery(); // disponível, não deve aparecer
+
+        const res = await request(app)
+            .get('/api/riders/deliveries/active')
+            .set('Authorization', `Bearer ${token}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.length).toBe(3);
+        const ids = res.body.map((d) => d._id);
+        expect(ids).toEqual(expect.arrayContaining([
+          accepted._id.toString(),
+          pickedUp._id.toString(),
+          dispatched._id.toString(),
+        ]));
+        expect(res.body.every((d) => [1, 2, 3].includes(d.status))).toBe(true);
+        // dados da loja populados, para exibir na tela Home
+        expect(res.body[0].store).toHaveProperty('name');
+    });
+  });
   // =====================
   // Rider Get Delivery By id
   // =====================
