@@ -86,3 +86,12 @@ export const createDeliveryValidator = [
         }
   ),
 ];
+
+// Usado por qualquer transição que exija justificativa: devolução (rider),
+// cancelamento pelo rider (antes da retirada) e cancelamento pela loja.
+export const deliveryReasonValidator = [
+  body('motivo')
+    .trim()
+    .notEmpty().withMessage('Motivo é obrigatório')
+    .isLength({ min: 3 }).withMessage('Descreva o motivo com um pouco mais de detalhe'),
+];

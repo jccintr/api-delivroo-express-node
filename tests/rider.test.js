@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach,vi } from 'vitest';
 import request from 'supertest';
 import app from '../app.js';
 import Rider from '../models/rider.js';
-import bcryptjs from 'bcryptjs';
-import jsonwebtoken from 'jsonwebtoken';
+
+//import jsonwebtoken from 'jsonwebtoken';
 import {createRider,createRiderWithToken} from './factories/rider.factory.js'
 // Mock the sendEmail function to avoid sending real emails during tests
 import * as sendEmail from '../utils/sendEmailV2.js';

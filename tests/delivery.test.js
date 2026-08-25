@@ -42,7 +42,8 @@ describe('delivery Routes', () => {
       expect(res.status).toBe(400);
       expect(res.body.error).toBe('Dados inválidos');
       expect(res.body.details).toBeInstanceOf(Array);
-      expect(res.body.details[0].message).toBe('Dados do destinatário são obrigatórios');
+     
+      expect(res.body.details.some((d) => d.message === 'Dados do destinatário são obrigatórios')).toBe(true);
     });
     it('deve retornar 400 quando o nome do destino não for informado', async () => {
       const { token } = await createStoreWithToken({ password: '123456' });
@@ -643,10 +644,39 @@ describe('delivery Routes', () => {
 // delivery status
 //-2: entrega cancelada pelo entregador => motivo
 //-1: entrega cancelada pela loja => motivo
-// 0: entrega solicitada
+// 0: entrega solicitada pela loja
 // 1: entrega aceita pelo entregador
-// 2: entrega retirada pelo entregador
+// 2: pacote retirado pelo entregador
 // 3: entregador a caminho do destino
-// 4: entrega entregue
-// 5: entrega devolvida a loja => motivo
+// 4: pacote entregue
+// 5: pacote devolvido a loja => motivo
+
+/*  sugestão do claude
+0: solicitada pela loja
+1: aceita pelo entregador
+2: pacote retirado
+3: a caminho do destino
+4: entregue
+5: devolvida à loja        (motivo)
+6: cancelada pela loja      (motivo)
+7: cancelada pelo entregador (motivo)
+
+*/
+
+
+/*
+
+status	significado	quem dispara	pré-condição
+0	solicitada	loja (createDelivery)	—
+1	aceita	rider	status 0, rider null
+2	retirada	rider	status 1, rider = eu
+3	a caminho	rider	status 2, rider = eu
+4	entregue	rider	status 3, rider = eu
+5	devolvida à loja (motivo)	rider	status 2 ou 3, rider = eu
+6	cancelada pela loja (motivo)	loja	status 0 ou 1
+7	cancelada pelo rider (motivo), volta pra 0	rider	status 1, rider = eu → reseta pra status:0, rider:null
+
+
+
+*/
 

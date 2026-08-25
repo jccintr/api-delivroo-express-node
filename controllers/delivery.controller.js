@@ -158,19 +158,20 @@ export const listAvailableDeliveries = async (req, res) => {
 // GET /riders/deliveries/:id
 // Detalhes de uma entrega específica, para a tela de "Detalhes da entrega"
 // (exibida ao tocar num card da lista de disponíveis), antes do rider
-// decidir se aceita. Não restringe por status/rider aqui — a checagem de
-// "ainda está disponível" é feita no momento do aceite (evita corrida entre
-// vários riders vendo a mesma entrega ao mesmo tempo), então esta rota
-// serve tanto para pré-visualizar uma entrega disponível quanto para
-// reabrir os detalhes de uma que o próprio rider já aceitou.
+// decidir se aceita.
+//
+// Regra de visibilidade:
+// - status 0 e sem rider atribuído → entrega "disponível", qualquer rider
+//   elegível pode ver os detalhes (é o caso de pré-visualização, vindo da
+//   lista de disponíveis).
+// - status > 0 (já aceita) → só o rider atribuído a ela pode ver. Depois
+//   que uma entrega é aceita, ela deixa de ser pública para os demais.
 export const getDelivery = async (req, res) => {
   try {
     const riderId = req.user?.id;
     const { id } = req.params;
 
     const { rider, error, status } = await findEligibleRider(riderId);
-
-    
     if (!rider) {
       return res.status(status).json({ error });
     }
@@ -181,18 +182,11 @@ export const getDelivery = async (req, res) => {
       return res.status(404).json({ error: 'Entrega não encontrada.' });
     }
 
-    // verificar o status
-    // verificar se o rider tem permissão para ver essa entrega (status ==0, rider == null ou rider == id do rider logado)
-
-   // if (delivery.status !== 0 || (delivery.rider && delivery.rider.toString() !== riderId)) {
-   //   return res.status(403).json({ error: 'Entrega indisponível.' });
-   // }
-
     const isAvailable = delivery.status === 0 && delivery.rider == null;
     const isOwnDelivery = delivery.rider != null && delivery.rider.equals(riderId);
 
     if (!isAvailable && !isOwnDelivery) {
-      return res.status(403).json({ error: 'Corrida indisponível no momento.' });
+      return res.status(403).json({ error: 'Você não tem permissão para ver esta entrega.' });
     }
 
     return res.status(200).json(delivery);
@@ -201,6 +195,295 @@ export const getDelivery = async (req, res) => {
       return res.status(404).json({ error: 'Entrega não encontrada.' });
     }
     console.error('Erro no getDelivery:', error);
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};
+
+// Helper comum a todas as transições de status feitas pelo rider: valida
+// elegibilidade, aplica um update atômico condicionado ao status/rider
+// atuais esperados (evita corrida entre requisições concorrentes e pulos de
+// etapa) e devolve a entrega já populada, ou o motivo do erro.
+//
+// `filter` deve sempre conter pelo menos `status` (e, exceto no aceite,
+// `rider: riderId`) para garantir que a transição só aconteça a partir do
+// estado esperado.
+async function transitionAsRider({ riderId, deliveryId, filter, update, conflictMessage }) {
+  const { rider, error, status } = await findEligibleRider(riderId);
+  if (!rider) {
+    return { error, status };
+  }
+
+  const delivery = await Delivery.findOneAndUpdate(
+    { _id: deliveryId, ...filter },
+    update,
+    { returnDocument: 'after' },
+  ).populate('store', 'name avatar address.district');
+
+  if (!delivery) {
+    return { error: conflictMessage, status: 409 };
+  }
+
+  return { delivery };
+}
+
+// POST /riders/deliveries/:id/accept
+// status 0 (disponível) → 1 (aceita). Só funciona se ninguém tiver
+// aceitado entre o rider ver os detalhes e tocar em "Aceitar" — é isso que
+// o filtro { status: 0, rider: null } garante de forma atômica.
+export const acceptDelivery = async (req, res) => {
+  try {
+    const riderId = req.user?.id;
+    const { id } = req.params;
+
+    const { delivery, error, status } = await transitionAsRider({
+      riderId,
+      deliveryId: id,
+      filter: { status: 0, rider: null },
+      update: {
+        status: 1,
+        rider: riderId,
+        acceptedAt: new Date(),
+        $push: { events: { data: new Date(), descricao: 'Entrega aceita pelo entregador' } },
+      },
+      conflictMessage: 'Esta entrega não está mais disponível.',
+    });
+
+    if (!delivery) {
+      return res.status(status).json({ error });
+    }
+
+    return res.status(200).json(delivery);
+  } catch (error) {
+    if (error.name === 'CastError') {
+      return res.status(404).json({ error: 'Entrega não encontrada.' });
+    }
+    console.error('Erro no acceptDelivery:', error);
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};
+
+// POST /riders/deliveries/:id/pickup
+// status 1 (aceita) → 2 (retirada). Só o rider que aceitou pode confirmar.
+export const pickupDelivery = async (req, res) => {
+  try {
+    const riderId = req.user?.id;
+    const { id } = req.params;
+
+    const { delivery, error, status } = await transitionAsRider({
+      riderId,
+      deliveryId: id,
+      filter: { status: 1, rider: riderId },
+      update: {
+        status: 2,
+        pickedUpAt: new Date(),
+        $push: { events: { data: new Date(), descricao: 'Pacote retirado pelo entregador' } },
+      },
+      conflictMessage: 'Não foi possível confirmar a retirada desta entrega.',
+    });
+
+    if (!delivery) {
+      return res.status(status).json({ error });
+    }
+
+    return res.status(200).json(delivery);
+  } catch (error) {
+    if (error.name === 'CastError') {
+      return res.status(404).json({ error: 'Entrega não encontrada.' });
+    }
+    console.error('Erro no pickupDelivery:', error);
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};
+
+// POST /riders/deliveries/:id/en-route
+// status 2 (retirada) → 3 (a caminho do destino).
+export const dispatchDelivery = async (req, res) => {
+  try {
+    const riderId = req.user?.id;
+    const { id } = req.params;
+
+    const { delivery, error, status } = await transitionAsRider({
+      riderId,
+      deliveryId: id,
+      filter: { status: 2, rider: riderId },
+      update: {
+        status: 3,
+        dispatchedAt: new Date(),
+        $push: { events: { data: new Date(), descricao: 'Entregador a caminho do destino' } },
+      },
+      conflictMessage: 'Não foi possível atualizar esta entrega.',
+    });
+
+    if (!delivery) {
+      return res.status(status).json({ error });
+    }
+
+    return res.status(200).json(delivery);
+  } catch (error) {
+    if (error.name === 'CastError') {
+      return res.status(404).json({ error: 'Entrega não encontrada.' });
+    }
+    console.error('Erro no dispatchDelivery:', error);
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};
+
+// POST /riders/deliveries/:id/deliver
+// status 3 (a caminho) → 4 (entregue). Estado final de sucesso.
+export const deliverDelivery = async (req, res) => {
+  try {
+    const riderId = req.user?.id;
+    const { id } = req.params;
+
+    const { delivery, error, status } = await transitionAsRider({
+      riderId,
+      deliveryId: id,
+      filter: { status: 3, rider: riderId },
+      update: {
+        status: 4,
+        deliveredAt: new Date(),
+        $push: { events: { data: new Date(), descricao: 'Pacote entregue' } },
+      },
+      conflictMessage: 'Não foi possível confirmar a entrega deste pacote.',
+    });
+
+    if (!delivery) {
+      return res.status(status).json({ error });
+    }
+
+    return res.status(200).json(delivery);
+  } catch (error) {
+    if (error.name === 'CastError') {
+      return res.status(404).json({ error: 'Entrega não encontrada.' });
+    }
+    console.error('Erro no deliverDelivery:', error);
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};
+
+// POST /riders/deliveries/:id/return
+// status 2 ou 3 (pacote já em posse do rider) → 5 (devolvida à loja).
+// Usado quando o cliente recusa/não é encontrado etc. Exige `motivo`.
+export const returnDelivery = async (req, res) => {
+  try {
+    const riderId = req.user?.id;
+    const { id } = req.params;
+    const { motivo } = req.body;
+
+    const { delivery, error, status } = await transitionAsRider({
+      riderId,
+      deliveryId: id,
+      filter: { status: { $in: [2, 3] }, rider: riderId },
+      update: {
+        status: 5,
+        cancelReason: motivo,
+        $push: { events: { data: new Date(), descricao: `Pacote devolvido à loja: ${motivo}` } },
+      },
+      conflictMessage: 'Não foi possível registrar a devolução desta entrega.',
+    });
+
+    if (!delivery) {
+      return res.status(status).json({ error });
+    }
+
+    return res.status(200).json(delivery);
+  } catch (error) {
+    if (error.name === 'CastError') {
+      return res.status(404).json({ error: 'Entrega não encontrada.' });
+    }
+    console.error('Erro no returnDelivery:', error);
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};
+
+// POST /riders/deliveries/:id/cancel
+// status 1 (aceita, ainda NÃO retirada) → volta para 0, com rider: null.
+// Cancelamento do rider antes de pegar o pacote não é um estado terminal:
+// a entrega reabre no pool para outro rider aceitar, em vez de forçar a
+// loja a recriar tudo do zero. Depois da retirada (status 2/3), o rider já
+// não pode mais "cancelar" — o caminho correto nesse ponto é /return.
+export const cancelDeliveryByRider = async (req, res) => {
+  try {
+    const riderId = req.user?.id;
+    const { id } = req.params;
+    const { motivo } = req.body;
+
+    const { delivery, error, status } = await transitionAsRider({
+      riderId,
+      deliveryId: id,
+      filter: { status: 1, rider: riderId },
+      update: {
+        status: 0,
+        rider: null,
+        acceptedAt: null,
+        $push: { events: { data: new Date(), descricao: `Entrega cancelada pelo entregador: ${motivo}` } },
+      },
+      conflictMessage: 'Não foi possível cancelar esta entrega.',
+    });
+
+    if (!delivery) {
+      return res.status(status).json({ error });
+    }
+
+    return res.status(200).json(delivery);
+  } catch (error) {
+    if (error.name === 'CastError') {
+      return res.status(404).json({ error: 'Entrega não encontrada.' });
+    }
+    console.error('Erro no cancelDeliveryByRider:', error);
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};
+
+// POST /stores/deliveries/:id/cancel
+// status 0 ou 1 (ainda sem pacote retirado) → 6, cancelada pela loja.
+// Depois que o rider já retirou o pacote (status 2+), a loja não pode mais
+// cancelar por aqui — nesse ponto quem decide é o rider (/return).
+export const cancelDeliveryByStore = async (req, res) => {
+  try {
+    const storeId = req.user?.id;
+    const { id } = req.params;
+    const { motivo } = req.body;
+
+    const store = await Store.findById(storeId).select('name active emailVerifiedAt');
+
+    if (!store) {
+      return res.status(404).json({ error: 'Loja não encontrada.' });
+    }
+
+    if (!store.active) {
+      return res.status(403).json({ error: 'Conta desativada.' });
+    }
+
+    if (!store.emailVerifiedAt) {
+      return res.status(403).json({ error: 'Conta ainda não verificada.' });
+    }
+
+    const delivery = await Delivery.findOneAndUpdate(
+      { _id: id, store: storeId, status: { $in: [0, 1] } },
+      {
+        status: 6,
+        cancelReason: motivo,
+        // Mantemos o rider gravado (se havia um) como registro histórico de
+        // quem tinha aceitado quando a loja cancelou — não zeramos aqui.
+        $push: { events: { data: new Date(), descricao: `Entrega cancelada pela loja: ${motivo}` } },
+      },
+      { returnDocument: 'after' },
+    );
+
+    if (!delivery) {
+      return res.status(409).json({ error: 'Não foi possível cancelar esta entrega.' });
+    }
+
+    // TODO: quando o rider já tinha aceitado (status era 1), notificá-lo
+    // (push) de que a loja cancelou a entrega em andamento.
+
+    return res.status(200).json(delivery);
+  } catch (error) {
+    if (error.name === 'CastError') {
+      return res.status(404).json({ error: 'Entrega não encontrada.' });
+    }
+    console.error('Erro no cancelDeliveryByStore:', error);
     return res.status(500).json({ error: 'Erro interno do servidor.' });
   }
 };

@@ -1,4 +1,3 @@
-
 import { Router } from 'express';
 import * as StoreController from '../controllers/store.controller.js';
 import * as DeliveryController from '../controllers/delivery.controller.js';
@@ -12,7 +11,7 @@ import {
     updateProfileValidator,
     
 } from '../validators/store.validator.js'
-import { createDeliveryValidator } from '../validators/delivery.validator.js';
+import { createDeliveryValidator, deliveryReasonValidator } from '../validators/delivery.validator.js';
 import { uploadAvatar as uploadMiddleware } from '../middlewares/upload.avatar.js';
 
 
@@ -29,5 +28,6 @@ router.post('/password/request',StoreController.requestPasswordCode);
 router.post('/password/verify-code',StoreController.verifyPasswordCode);
 router.post('/password/reset',resetPasswordValidator, validate, StoreController.resetPassword);
 router.post('/deliveries', AuthStore, createDeliveryValidator, validate, DeliveryController.createDelivery);
+router.post('/deliveries/:id/cancel', AuthStore, deliveryReasonValidator, validate, DeliveryController.cancelDeliveryByStore);
 
 export default router;
