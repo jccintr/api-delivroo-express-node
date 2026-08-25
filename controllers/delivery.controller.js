@@ -468,7 +468,7 @@ export const cancelDeliveryByStore = async (req, res) => {
       return res.status(403).json({ error: 'Conta ainda não verificada.' });
     }
 
-    const delivery = await Delivery.findOneAndUpdate(
+        const delivery = await Delivery.findOneAndUpdate(
       { _id: id, store: storeId, status: { $in: [0, 1] } },
       {
         status: 6,
@@ -481,6 +481,19 @@ export const cancelDeliveryByStore = async (req, res) => {
     );
 
     if (!delivery) {
+      // Mesmo raciocínio do transitionAsRider: só investiga o motivo exato
+      // da falha aqui no caminho de erro, sem comprometer a atomicidade do
+      // update acima.
+      const existing = await Delivery.findById(id).select('store status');
+
+      if (!existing) {
+        return res.status(404).json({ error: 'Entrega não encontrada.' });
+      }
+
+      if (existing.store.toString() !== storeId) {
+        return res.status(403).json({ error: 'Você não tem permissão para cancelar esta entrega.' });
+      }
+
       return res.status(409).json({ error: 'Não foi possível cancelar esta entrega.' });
     }
 

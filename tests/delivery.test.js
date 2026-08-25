@@ -637,7 +637,7 @@ describe('delivery Routes', () => {
     });
      
   });
-    // =====================
+  // =====================
   // ACCEPT DELIVERY
   // =====================
   describe('POST /api/riders/deliveries/:id/accept', () => {
@@ -782,7 +782,447 @@ describe('delivery Routes', () => {
       expect(resB.body.error).toBe('Esta entrega não está mais disponível.');
     });
   });
+    // =====================
+  // PICKUP DELIVERY
+  // =====================
+  describe('POST /api/riders/deliveries/:id/pickup', () => {
+    it('deve retornar 401 quando não autenticado (sem token)', async () => {
+      const delivery = await createDelivery({ status: 1 });
+      const res = await request(app).post(`/api/riders/deliveries/${delivery._id}/pickup`);
+
+      expect(res.status).toBe(401);
+      expect(res.body.error).toBe('Não autorizado');
+    });
+
+    it('deve retornar 404 quando a entrega não existir', async () => {
+      const deliveryId = '6a8a288269c7d67379404c00';
+      const { token, rider } = await createRiderWithToken({ password: '123456' });
+      await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
+
+      const res = await request(app).post(`/api/riders/deliveries/${deliveryId}/pickup`)
+            .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe('Entrega não encontrada.');
+    });
+
+    it('deve retornar 409 quando a entrega ainda não tiver sido aceita (status 0)', async () => {
+      const { token, rider } = await createRiderWithToken({ password: '123456' });
+      await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
+      const delivery = await createDelivery();
+
+      const res = await request(app).post(`/api/riders/deliveries/${delivery._id}/pickup`)
+            .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(409);
+      expect(res.body.error).toBe('Não foi possível confirmar a retirada desta entrega.');
+    });
+
+    it('deve retornar 409 quando o rider autenticado não for o rider atribuído à entrega', async () => {
+      const { token, rider } = await createRiderWithToken({ password: '123456' });
+      await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
+      const anotherRider = await createRider();
+      const delivery = await createDelivery({ status: 1, rider: anotherRider._id });
+
+      const res = await request(app).post(`/api/riders/deliveries/${delivery._id}/pickup`)
+            .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(409);
+      expect(res.body.error).toBe('Não foi possível confirmar a retirada desta entrega.');
+    });
+
+    it('deve confirmar a retirada com sucesso: status 1 → 2 e pickedUpAt preenchido', async () => {
+      const { token, rider } = await createRiderWithToken({ password: '123456' });
+      await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
+      const delivery = await createDelivery({ status: 1, rider: rider._id });
+
+      const res = await request(app).post(`/api/riders/deliveries/${delivery._id}/pickup`)
+            .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe(2);
+      expect(res.body.pickedUpAt).not.toBeNull();
+      expect(res.body.events[0].descricao).toBe('Pacote retirado pelo entregador');
+    });
+  });
+
+  // =====================
+  // EN-ROUTE (A CAMINHO DO DESTINO)
+  // =====================
+  describe('POST /api/riders/deliveries/:id/en-route', () => {
+    it('deve retornar 401 quando não autenticado (sem token)', async () => {
+      const delivery = await createDelivery({ status: 2 });
+      const res = await request(app).post(`/api/riders/deliveries/${delivery._id}/en-route`);
+
+      expect(res.status).toBe(401);
+      expect(res.body.error).toBe('Não autorizado');
+    });
+
+    it('deve retornar 404 quando a entrega não existir', async () => {
+      const deliveryId = '6a8a288269c7d67379404c00';
+      const { token, rider } = await createRiderWithToken({ password: '123456' });
+      await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
+
+      const res = await request(app).post(`/api/riders/deliveries/${deliveryId}/en-route`)
+            .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe('Entrega não encontrada.');
+    });
+
+    it('deve retornar 409 quando o pacote ainda não tiver sido retirado (status 1)', async () => {
+      const { token, rider } = await createRiderWithToken({ password: '123456' });
+      await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
+      const delivery = await createDelivery({ status: 1, rider: rider._id });
+
+      const res = await request(app).post(`/api/riders/deliveries/${delivery._id}/en-route`)
+            .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(409);
+      expect(res.body.error).toBe('Não foi possível atualizar esta entrega.');
+    });
+
+    it('deve marcar como a caminho com sucesso: status 2 → 3 e dispatchedAt preenchido', async () => {
+      const { token, rider } = await createRiderWithToken({ password: '123456' });
+      await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
+      const delivery = await createDelivery({ status: 2, rider: rider._id });
+
+      const res = await request(app).post(`/api/riders/deliveries/${delivery._id}/en-route`)
+            .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe(3);
+      expect(res.body.dispatchedAt).not.toBeNull();
+      expect(res.body.events[0].descricao).toBe('Entregador a caminho do destino');
+    });
+  });
+
+  // =====================
+  // DELIVER
+  // =====================
+  describe('POST /api/riders/deliveries/:id/deliver', () => {
+    it('deve retornar 401 quando não autenticado (sem token)', async () => {
+      const delivery = await createDelivery({ status: 3 });
+      const res = await request(app).post(`/api/riders/deliveries/${delivery._id}/deliver`);
+
+      expect(res.status).toBe(401);
+      expect(res.body.error).toBe('Não autorizado');
+    });
+
+    it('deve retornar 404 quando a entrega não existir', async () => {
+      const deliveryId = '6a8a288269c7d67379404c00';
+      const { token, rider } = await createRiderWithToken({ password: '123456' });
+      await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
+
+      const res = await request(app).post(`/api/riders/deliveries/${deliveryId}/deliver`)
+            .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe('Entrega não encontrada.');
+    });
+
+    it('deve retornar 409 quando a entrega não estiver a caminho (status 2)', async () => {
+      const { token, rider } = await createRiderWithToken({ password: '123456' });
+      await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
+      const delivery = await createDelivery({ status: 2, rider: rider._id });
+
+      const res = await request(app).post(`/api/riders/deliveries/${delivery._id}/deliver`)
+            .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(409);
+      expect(res.body.error).toBe('Não foi possível confirmar a entrega deste pacote.');
+    });
+
+    it('deve confirmar a entrega com sucesso: status 3 → 4 e deliveredAt preenchido', async () => {
+      const { token, rider } = await createRiderWithToken({ password: '123456' });
+      await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
+      const delivery = await createDelivery({ status: 3, rider: rider._id });
+
+      const res = await request(app).post(`/api/riders/deliveries/${delivery._id}/deliver`)
+            .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe(4);
+      expect(res.body.deliveredAt).not.toBeNull();
+      expect(res.body.events[0].descricao).toBe('Pacote entregue');
+    });
+  });
+
+  // =====================
+  // RETURN (DEVOLUÇÃO À LOJA)
+  // =====================
+  describe('POST /api/riders/deliveries/:id/return', () => {
+    it('deve retornar 401 quando não autenticado (sem token)', async () => {
+      const delivery = await createDelivery({ status: 2 });
+      const res = await request(app).post(`/api/riders/deliveries/${delivery._id}/return`)
+            .send({ motivo: 'Cliente não encontrado' });
+
+      expect(res.status).toBe(401);
+      expect(res.body.error).toBe('Não autorizado');
+    });
+
+    it('deve retornar 400 quando o motivo não for informado', async () => {
+      const { token, rider } = await createRiderWithToken({ password: '123456' });
+      await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
+      const delivery = await createDelivery({ status: 2, rider: rider._id });
+
+      const res = await request(app).post(`/api/riders/deliveries/${delivery._id}/return`)
+            .set('Authorization', `Bearer ${token}`)
+            .send({});
+
+      expect(res.status).toBe(400);
+      expect(res.body.details[0].message).toBe('Motivo é obrigatório');
+    });
+
+    it('deve retornar 404 quando a entrega não existir', async () => {
+      const deliveryId = '6a8a288269c7d67379404c00';
+      const { token, rider } = await createRiderWithToken({ password: '123456' });
+      await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
+
+      const res = await request(app).post(`/api/riders/deliveries/${deliveryId}/return`)
+            .set('Authorization', `Bearer ${token}`)
+            .send({ motivo: 'Cliente não encontrado' });
+
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe('Entrega não encontrada.');
+    });
+
+    it('deve retornar 409 quando a entrega ainda não tiver sido retirada (status 1)', async () => {
+      const { token, rider } = await createRiderWithToken({ password: '123456' });
+      await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
+      const delivery = await createDelivery({ status: 1, rider: rider._id });
+
+      const res = await request(app).post(`/api/riders/deliveries/${delivery._id}/return`)
+            .set('Authorization', `Bearer ${token}`)
+            .send({ motivo: 'Cliente não encontrado no endereço' });
+
+      expect(res.status).toBe(409);
+      expect(res.body.error).toBe('Não foi possível registrar a devolução desta entrega.');
+    });
+
+    it('deve devolver com sucesso a partir de status 2 (retirada): status → 5 e cancelReason preenchido', async () => {
+      const { token, rider } = await createRiderWithToken({ password: '123456' });
+      await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
+      const delivery = await createDelivery({ status: 2, rider: rider._id });
+
+      const res = await request(app).post(`/api/riders/deliveries/${delivery._id}/return`)
+            .set('Authorization', `Bearer ${token}`)
+            .send({ motivo: 'Cliente não encontrado no endereço' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe(5);
+      expect(res.body.cancelReason).toBe('Cliente não encontrado no endereço');
+      expect(res.body.events[0].descricao).toBe('Pacote devolvido à loja: Cliente não encontrado no endereço');
+    });
+
+    it('deve devolver com sucesso a partir de status 3 (a caminho)', async () => {
+      const { token, rider } = await createRiderWithToken({ password: '123456' });
+      await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
+      const delivery = await createDelivery({ status: 3, rider: rider._id });
+
+      const res = await request(app).post(`/api/riders/deliveries/${delivery._id}/return`)
+            .set('Authorization', `Bearer ${token}`)
+            .send({ motivo: 'Cliente recusou o pacote' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe(5);
+    });
+  });
+
+  // =====================
+  // CANCEL BY RIDER (ANTES DA RETIRADA)
+  // =====================
+  describe('POST /api/riders/deliveries/:id/cancel', () => {
+    it('deve retornar 401 quando não autenticado (sem token)', async () => {
+      const delivery = await createDelivery({ status: 1 });
+      const res = await request(app).post(`/api/riders/deliveries/${delivery._id}/cancel`)
+            .send({ motivo: 'Mudei de ideia' });
+
+      expect(res.status).toBe(401);
+      expect(res.body.error).toBe('Não autorizado');
+    });
+
+    it('deve retornar 400 quando o motivo não for informado', async () => {
+      const { token, rider } = await createRiderWithToken({ password: '123456' });
+      await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
+      const delivery = await createDelivery({ status: 1, rider: rider._id });
+
+      const res = await request(app).post(`/api/riders/deliveries/${delivery._id}/cancel`)
+            .set('Authorization', `Bearer ${token}`)
+            .send({});
+
+      expect(res.status).toBe(400);
+      expect(res.body.details[0].message).toBe('Motivo é obrigatório');
+    });
+
+    it('deve retornar 404 quando a entrega não existir', async () => {
+      const deliveryId = '6a8a288269c7d67379404c00';
+      const { token, rider } = await createRiderWithToken({ password: '123456' });
+      await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
+
+      const res = await request(app).post(`/api/riders/deliveries/${deliveryId}/cancel`)
+            .set('Authorization', `Bearer ${token}`)
+            .send({ motivo: 'Mudei de ideia' });
+
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe('Entrega não encontrada.');
+    });
+
+    it('deve retornar 409 quando o pacote já tiver sido retirado (status 2)', async () => {
+      const { token, rider } = await createRiderWithToken({ password: '123456' });
+      await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
+      const delivery = await createDelivery({ status: 2, rider: rider._id });
+
+      const res = await request(app).post(`/api/riders/deliveries/${delivery._id}/cancel`)
+            .set('Authorization', `Bearer ${token}`)
+            .send({ motivo: 'Mudei de ideia' });
+
+      expect(res.status).toBe(409);
+      expect(res.body.error).toBe('Não foi possível cancelar esta entrega.');
+    });
+
+    it('deve cancelar com sucesso: status volta para 0 e rider volta para null (entrega reabre no pool)', async () => {
+      const { token, rider } = await createRiderWithToken({ password: '123456' });
+      await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
+      const delivery = await createDelivery({ status: 1, rider: rider._id, acceptedAt: new Date() });
+
+      const res = await request(app).post(`/api/riders/deliveries/${delivery._id}/cancel`)
+            .set('Authorization', `Bearer ${token}`)
+            .send({ motivo: 'Veículo com problema' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe(0);
+      expect(res.body.rider).toBeNull();
+      expect(res.body.acceptedAt).toBeNull();
+
+      // a entrega deve voltar a aparecer na lista de disponíveis
+      const listRes = await request(app).get('/api/riders/deliveries/available')
+            .set('Authorization', `Bearer ${token}`);
+      expect(listRes.body.some((d) => d._id === delivery._id.toString())).toBe(true);
+    });
+  });
+
+  // =====================
+  // CANCEL BY STORE
+  // =====================
+  describe('POST /api/stores/deliveries/:id/cancel', () => {
+    it('deve retornar 401 quando não autenticado (sem token)', async () => {
+      const delivery = await createDelivery();
+      const res = await request(app).post(`/api/stores/deliveries/${delivery._id}/cancel`)
+            .send({ motivo: 'Pedido duplicado' });
+
+      expect(res.status).toBe(401);
+    });
+
+    it('deve retornar 403 quando a conta estiver desativada', async () => {
+      const { token, store } = await createStoreWithToken({ password: '123456' });
+      await Store.findByIdAndUpdate(store._id, { emailVerifiedAt: new Date(), active: false });
+      const delivery = await createDelivery({ store: store._id });
+
+      const res = await request(app).post(`/api/stores/deliveries/${delivery._id}/cancel`)
+            .set('Authorization', `Bearer ${token}`)
+            .send({ motivo: 'Pedido duplicado' });
+
+      expect(res.status).toBe(403);
+      expect(res.body.error).toBe('Conta desativada.');
+    });
+
+    it('deve retornar 403 quando a conta não estiver verificada', async () => {
+      const { token, store } = await createStoreWithToken({ password: '123456' });
+      await Store.findByIdAndUpdate(store._id, { emailVerifiedAt: null, active: true });
+      const delivery = await createDelivery({ store: store._id });
+
+      const res = await request(app).post(`/api/stores/deliveries/${delivery._id}/cancel`)
+            .set('Authorization', `Bearer ${token}`)
+            .send({ motivo: 'Pedido duplicado' });
+
+      expect(res.status).toBe(403);
+      expect(res.body.error).toBe('Conta ainda não verificada.');
+    });
+
+    it('deve retornar 400 quando o motivo não for informado', async () => {
+      const { token, store } = await createStoreWithToken({ password: '123456' });
+      await Store.findByIdAndUpdate(store._id, { emailVerifiedAt: new Date(), active: true });
+      const delivery = await createDelivery({ store: store._id });
+
+      const res = await request(app).post(`/api/stores/deliveries/${delivery._id}/cancel`)
+            .set('Authorization', `Bearer ${token}`)
+            .send({});
+
+      expect(res.status).toBe(400);
+      expect(res.body.details[0].message).toBe('Motivo é obrigatório');
+    });
+
+    it('deve retornar 404 quando a entrega não existir', async () => {
+      const deliveryId = '6a8a288269c7d67379404c00';
+      const { token, store } = await createStoreWithToken({ password: '123456' });
+      await Store.findByIdAndUpdate(store._id, { emailVerifiedAt: new Date(), active: true });
+
+      const res = await request(app).post(`/api/stores/deliveries/${deliveryId}/cancel`)
+            .set('Authorization', `Bearer ${token}`)
+            .send({ motivo: 'Pedido duplicado' });
+
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe('Entrega não encontrada.');
+    });
+
+    it('deve retornar 403 quando a entrega não pertencer à loja autenticada', async () => {
+      const { token, store } = await createStoreWithToken({ password: '123456' });
+      await Store.findByIdAndUpdate(store._id, { emailVerifiedAt: new Date(), active: true });
+      const otherStoreDelivery = await createDelivery(); // pertence a outra loja
+
+      const res = await request(app).post(`/api/stores/deliveries/${otherStoreDelivery._id}/cancel`)
+            .set('Authorization', `Bearer ${token}`)
+            .send({ motivo: 'Pedido duplicado' });
+
+      expect(res.status).toBe(403);
+      expect(res.body.error).toBe('Você não tem permissão para cancelar esta entrega.');
+    });
+
+    it('deve retornar 409 quando o pacote já tiver sido retirado (status 2)', async () => {
+      const { token, store } = await createStoreWithToken({ password: '123456' });
+      await Store.findByIdAndUpdate(store._id, { emailVerifiedAt: new Date(), active: true });
+      const delivery = await createDelivery({ store: store._id, status: 2 });
+
+      const res = await request(app).post(`/api/stores/deliveries/${delivery._id}/cancel`)
+            .set('Authorization', `Bearer ${token}`)
+            .send({ motivo: 'Pedido duplicado' });
+
+      expect(res.status).toBe(409);
+      expect(res.body.error).toBe('Não foi possível cancelar esta entrega.');
+    });
+
+    it('deve cancelar com sucesso a partir de status 0: status → 6 e cancelReason preenchido', async () => {
+      const { token, store } = await createStoreWithToken({ password: '123456' });
+      await Store.findByIdAndUpdate(store._id, { emailVerifiedAt: new Date(), active: true });
+      const delivery = await createDelivery({ store: store._id });
+
+      const res = await request(app).post(`/api/stores/deliveries/${delivery._id}/cancel`)
+            .set('Authorization', `Bearer ${token}`)
+            .send({ motivo: 'Pedido duplicado' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe(6);
+      expect(res.body.cancelReason).toBe('Pedido duplicado');
+    });
+
+    it('deve cancelar com sucesso a partir de status 1 (já aceita), mantendo o rider gravado', async () => {
+      const { token, store } = await createStoreWithToken({ password: '123456' });
+      await Store.findByIdAndUpdate(store._id, { emailVerifiedAt: new Date(), active: true });
+      const rider = await createRider();
+      const delivery = await createDelivery({ store: store._id, status: 1, rider: rider._id });
+
+      const res = await request(app).post(`/api/stores/deliveries/${delivery._id}/cancel`)
+            .set('Authorization', `Bearer ${token}`)
+            .send({ motivo: 'Loja fechou mais cedo' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe(6);
+      expect(res.body.rider).toBe(rider._id.toString());
+    });
+  });
 });
+
 
 
 
