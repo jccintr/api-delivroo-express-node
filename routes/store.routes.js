@@ -28,6 +28,7 @@ router.post('/password/request',StoreController.requestPasswordCode);
 router.post('/password/verify-code',StoreController.verifyPasswordCode);
 router.post('/password/reset',resetPasswordValidator, validate, StoreController.resetPassword);
 router.post('/deliveries', AuthStore, createDeliveryValidator, validate, DeliveryController.createDelivery);
+router.get('/deliveries/active', AuthStore, DeliveryController.listStoreActiveDeliveries);
 router.post('/deliveries/:id/cancel', AuthStore, deliveryReasonValidator, validate, DeliveryController.cancelDeliveryByStore);
 
 export default router;

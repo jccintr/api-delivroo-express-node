@@ -470,6 +470,42 @@ export const cancelDeliveryByRider = async (req, res) => {
   }
 };
 
+// GET /stores/deliveries/active
+// Lista as entregas da loja autenticada que ainda estão em andamento
+// (status 0, 1, 2 ou 3 — solicitada, aceita, retirada ou a caminho), para
+// a loja acompanhar o que falta ser concluído. Entregas em estado final
+// (4 entregue, 5 devolvida, 6 cancelada) não aparecem aqui. Quando já
+// houver rider atribuído, seus dados básicos vêm populados para a loja
+// saber quem está com o pacote.
+export const listStoreActiveDeliveries = async (req, res) => {
+  try {
+    const storeId = req.user?.id;
+
+    const store = await Store.findById(storeId).select('name active emailVerifiedAt');
+
+    if (!store) {
+      return res.status(404).json({ error: 'Loja não encontrada.' });
+    }
+
+    if (!store.active) {
+      return res.status(403).json({ error: 'Conta desativada.' });
+    }
+
+    if (!store.emailVerifiedAt) {
+      return res.status(403).json({ error: 'Conta ainda não verificada.' });
+    }
+
+    const deliveries = await Delivery.find({ store: storeId, status: { $in: [0, 1, 2, 3] } })
+      .populate('rider', 'name phone avatar vehicle rating')
+      .sort({ createdAt: -1 });
+
+    return res.status(200).json(deliveries);
+  } catch (error) {
+    console.error('Erro no listStoreActiveDeliveries:', error);
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};
+
 // POST /stores/deliveries/:id/cancel
 // status 0 ou 1 (ainda sem pacote retirado) → 6, cancelada pela loja.
 // Depois que o rider já retirou o pacote (status 2+), a loja não pode mais
