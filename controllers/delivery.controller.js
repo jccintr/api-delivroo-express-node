@@ -235,12 +235,7 @@ export const getDelivery = async (req, res) => {
 // `filter` deve sempre conter pelo menos `status` (e, exceto no aceite,
 // `rider: riderId`) para garantir que a transição só aconteça a partir do
 // estado esperado.
-import Store from '../models/store.js';
-import Delivery from '../models/delivery.js';
-import Rider from '../models/rider.js';
-import { distanceBetween } from '../utils/googleMaps.js';
-import { buildStoreAddressText } from '../utils/address.js';
-import { notifyStore } from '../websocket.js';
+
 
 // ... (código existente sem mudanças até chegar em transitionAsRider) ...
 
