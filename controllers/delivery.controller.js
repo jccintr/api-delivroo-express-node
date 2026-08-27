@@ -3,6 +3,8 @@ import Delivery from '../models/delivery.js';
 import Rider from '../models/rider.js';
 import { distanceBetween } from '../utils/googleMaps.js';
 import { buildStoreAddressText } from '../utils/address.js';
+import { notifyStore } from '../websocket.js';
+
 
 // TODO: substituir por um cálculo real (baseado em distância, categoria do
 // pacote, demanda/hora, taxa mínima etc.) quando essa regra de negócio for
@@ -233,7 +235,16 @@ export const getDelivery = async (req, res) => {
 // `filter` deve sempre conter pelo menos `status` (e, exceto no aceite,
 // `rider: riderId`) para garantir que a transição só aconteça a partir do
 // estado esperado.
-async function transitionAsRider({ riderId, deliveryId, filter, update, conflictMessage }) {
+import Store from '../models/store.js';
+import Delivery from '../models/delivery.js';
+import Rider from '../models/rider.js';
+import { distanceBetween } from '../utils/googleMaps.js';
+import { buildStoreAddressText } from '../utils/address.js';
+import { notifyStore } from '../websocket.js';
+
+// ... (código existente sem mudanças até chegar em transitionAsRider) ...
+
+async function transitionAsRider({ riderId, deliveryId, filter, update, conflictMessage, notifyEvent }) {
   const { rider, error, status } = await findEligibleRider(riderId);
   if (!rider) {
     return { error, status };
@@ -243,7 +254,9 @@ async function transitionAsRider({ riderId, deliveryId, filter, update, conflict
     { _id: deliveryId, ...filter },
     update,
     { returnDocument: 'after' },
-  ).populate('store', 'name avatar address.district');
+  )
+    .populate('store', 'name avatar address.district')
+    .populate('rider', 'name phone avatar vehicle rating');
 
   if (!delivery) {
     // O findOneAndUpdate acima retorna null tanto quando a entrega não
@@ -256,6 +269,18 @@ async function transitionAsRider({ riderId, deliveryId, filter, update, conflict
       return { error: 'Entrega não encontrada.', status: 404 };
     }
     return { error: conflictMessage, status: 409 };
+  }
+
+  // Avisa o painel da loja em tempo real (via WebSocket) que essa entrega
+  // mudou. Se a loja não estiver com o dashboard aberto no momento, a
+  // notificação simplesmente não tem destinatário — não é um erro, ela vê
+  // o estado atualizado na próxima vez que abrir/atualizar a tela.
+  if (notifyEvent && delivery.store) {
+    notifyStore(delivery.store._id, {
+      type: 'delivery:updated',
+      event: notifyEvent,
+      delivery,
+    });
   }
 
   return { delivery };
@@ -281,6 +306,7 @@ export const acceptDelivery = async (req, res) => {
         $push: { events: { data: new Date(), descricao: 'Entrega aceita pelo entregador' } },
       },
       conflictMessage: 'Esta entrega não está mais disponível.',
+      notifyEvent: 'accepted',
     });
 
     if (!delivery) {
@@ -314,6 +340,7 @@ export const pickupDelivery = async (req, res) => {
         $push: { events: { data: new Date(), descricao: 'Pacote retirado pelo entregador' } },
       },
       conflictMessage: 'Não foi possível confirmar a retirada desta entrega.',
+      notifyEvent: 'picked-up',
     });
 
     if (!delivery) {
@@ -347,6 +374,7 @@ export const dispatchDelivery = async (req, res) => {
         $push: { events: { data: new Date(), descricao: 'Entregador a caminho do destino' } },
       },
       conflictMessage: 'Não foi possível atualizar esta entrega.',
+      notifyEvent: 'dispatched',
     });
 
     if (!delivery) {
@@ -380,6 +408,7 @@ export const deliverDelivery = async (req, res) => {
         $push: { events: { data: new Date(), descricao: 'Pacote entregue' } },
       },
       conflictMessage: 'Não foi possível confirmar a entrega deste pacote.',
+      notifyEvent: 'delivered',
     });
 
     if (!delivery) {
@@ -415,6 +444,7 @@ export const returnDelivery = async (req, res) => {
         $push: { events: { data: new Date(), descricao: `Pacote devolvido à loja: ${motivo}` } },
       },
       conflictMessage: 'Não foi possível registrar a devolução desta entrega.',
+      notifyEvent: 'returned',
     });
 
     if (!delivery) {
@@ -454,6 +484,7 @@ export const cancelDeliveryByRider = async (req, res) => {
         $push: { events: { data: new Date(), descricao: `Entrega cancelada pelo entregador: ${motivo}` } },
       },
       conflictMessage: 'Não foi possível cancelar esta entrega.',
+      notifyEvent: 'cancelled_by_rider',
     });
 
     if (!delivery) {
