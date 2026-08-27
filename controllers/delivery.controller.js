@@ -254,9 +254,7 @@ async function transitionAsRider({ riderId, deliveryId, filter, update, conflict
     { _id: deliveryId, ...filter },
     update,
     { returnDocument: 'after' },
-  )
-    .populate('store', 'name avatar address.district')
-    .populate('rider', 'name phone avatar vehicle rating');
+  ).populate('store', 'name avatar address.district');
 
   if (!delivery) {
     // O findOneAndUpdate acima retorna null tanto quando a entrega não
@@ -275,17 +273,26 @@ async function transitionAsRider({ riderId, deliveryId, filter, update, conflict
   // mudou. Se a loja não estiver com o dashboard aberto no momento, a
   // notificação simplesmente não tem destinatário — não é um erro, ela vê
   // o estado atualizado na próxima vez que abrir/atualizar a tela.
+  //
+  // Importante: buscamos uma cópia separada da entrega, com o rider
+  // populado, só para esse payload. O `delivery` retornado abaixo é o que
+  // a resposta REST devolve para o próprio rider — e essa resposta sempre
+  // trouxe `rider` como o ID simples (não populado), então não podemos
+  // popular o objeto original sem quebrar esse contrato já existente.
   if (notifyEvent && delivery.store) {
+    const deliveryForStore = await Delivery.findById(delivery._id)
+      .populate('store', 'name avatar address.district')
+      .populate('rider', 'name phone avatar vehicle rating');
+
     notifyStore(delivery.store._id, {
       type: 'delivery:updated',
       event: notifyEvent,
-      delivery,
+      delivery: deliveryForStore,
     });
   }
 
   return { delivery };
 }
-
 // POST /riders/deliveries/:id/accept
 // status 0 (disponível) → 1 (aceita). Só funciona se ninguém tiver
 // aceitado entre o rider ver os detalhes e tocar em "Aceitar" — é isso que
