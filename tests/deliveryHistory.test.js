@@ -98,6 +98,65 @@ describe('GET /api/stores/deliveries/history', () => {
     expect(res.body.details.some((d) => d.message.includes('anterior à data inicial'))).toBe(true);
   });
 
+    it('deve retornar 400 quando "from" tiver formato certo mas for uma data inexistente (ex: 31 de abril)', async () => {
+    const { token, store } = await createStoreWithToken({ password: '123456' });
+    await Store.findByIdAndUpdate(store._id, { emailVerifiedAt: new Date(), active: true });
+
+    const res = await request(app)
+      .get('/api/stores/deliveries/history?from=2026-04-31&to=2026-08-24')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(400);
+    expect(res.body.details.some((d) => d.field === 'from')).toBe(true);
+  });
+
+  it('deve retornar 400 quando "from" for 30 de fevereiro (mês não tem esse dia)', async () => {
+    const { token, store } = await createStoreWithToken({ password: '123456' });
+    await Store.findByIdAndUpdate(store._id, { emailVerifiedAt: new Date(), active: true });
+
+    const res = await request(app)
+      .get('/api/stores/deliveries/history?from=2026-02-30&to=2026-08-24')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(400);
+    expect(res.body.details.some((d) => d.field === 'from')).toBe(true);
+  });
+
+  it('deve retornar 400 quando "to" for 29 de fevereiro num ano não bissexto', async () => {
+    const { token, store } = await createStoreWithToken({ password: '123456' });
+    await Store.findByIdAndUpdate(store._id, { emailVerifiedAt: new Date(), active: true });
+
+    const res = await request(app)
+      .get('/api/stores/deliveries/history?to=2026-02-29') // 2026 não é bissexto
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(400);
+    expect(res.body.details.some((d) => d.field === 'to')).toBe(true);
+  });
+
+  it('deve aceitar 29 de fevereiro num ano bissexto', async () => {
+    const { token, store } = await createStoreWithToken({ password: '123456' });
+    await Store.findByIdAndUpdate(store._id, { emailVerifiedAt: new Date(), active: true });
+
+    const res = await request(app)
+      .get('/api/stores/deliveries/history?from=2028-02-29') // 2028 é bissexto
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+  });
+
+  it('deve retornar 400 quando "to" tiver formato certo mas mês inexistente (ex: mês 13)', async () => {
+    const { token, store } = await createStoreWithToken({ password: '123456' });
+    await Store.findByIdAndUpdate(store._id, { emailVerifiedAt: new Date(), active: true });
+
+    const res = await request(app)
+      .get('/api/stores/deliveries/history?to=2026-13-01')
+      .set('Authorization', `Bearer ${token}`);
+
+    expect(res.status).toBe(400);
+    expect(res.body.details.some((d) => d.field === 'to')).toBe(true);
+  });
+
   it('deve retornar 200 com lista e paginação vazias quando a loja não tem histórico', async () => {
     const { token, store } = await createStoreWithToken({ password: '123456' });
     await Store.findByIdAndUpdate(store._id, { emailVerifiedAt: new Date(), active: true });

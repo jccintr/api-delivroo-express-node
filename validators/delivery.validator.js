@@ -137,14 +137,19 @@ export const historyQueryValidator = [
     .optional()
     .isIn(HISTORY_STATUS_FILTERS).withMessage(`Status deve ser um de: ${HISTORY_STATUS_FILTERS.join(', ')}`),
 
-  query('from')
+    query('from')
     .optional()
-    .isISO8601().withMessage('Data inicial inválida (use AAAA-MM-DD)')
+    // strict: true rejeita datas com formato certo mas calendário inválido
+    // (ex: 2026-04-31, 2026-02-30, 29/fev fora de ano bissexto). No modo
+    // padrão (não-strict), isISO8601 só confere o formato via regex e deixa
+    // passar essas datas inexistentes — e o `new Date(...)` do JS "conserta"
+    // silenciosamente rolando pro mês seguinte, sem erro nenhum.
+    .isISO8601({ strict: true }).withMessage('Data inicial inválida ou inexistente (use AAAA-MM-DD)')
     .customSanitizer(toBrazilDayStart),
 
   query('to')
     .optional()
-    .isISO8601().withMessage('Data final inválida (use AAAA-MM-DD)')
+    .isISO8601({ strict: true }).withMessage('Data final inválida ou inexistente (use AAAA-MM-DD)')
     .customSanitizer(toBrazilDayEnd),
 
   query('page')
