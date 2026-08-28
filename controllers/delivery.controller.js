@@ -548,6 +548,71 @@ const HISTORY_STATUS_CODES = {
   cancelled: 6,
 };
 
+// Núcleo compartilhado entre o histórico da loja e o do rider — a única
+// diferença entre os dois é por qual dono filtrar (store vs rider) e qual
+// lado popular na resposta (rider vs store, respectivamente). As checagens
+// de elegibilidade (conta ativa/verificada/aprovada) são específicas de
+// cada papel e ficam nos controllers que chamam esta função, antes de
+// chegar aqui. Centralizar isso evita duplicar — e voltar a ter que
+// corrigir duas vezes — a lógica de filtro por período/paginação (já
+// corrigimos bugs de fuso horário e de tipos aqui uma vez; não vale a pena
+// arriscar divergir as duas cópias).
+
+async function findDeliveryHistory(req, { ownerField, ownerId, populateField, populateSelect }) {
+  // Lemos os valores já validados/sanitizados via matchedData — NÃO de
+  // req.query diretamente. No Express 5, req.query é um getter que
+  // reparseia a URL a cada acesso, então as sanitizações do
+  // express-validator (toDate/toInt/customSanitizer) nunca chegam a
+  // req.query; matchedData(req) é a forma correta de pegar os valores já
+  // convertidos (ver historyQueryValidator).
+  const { status, from, to, page = 1, limit = 20 } = matchedData(req, { locations: ['query'] });
+
+  if (from && to && to < from) {
+    return {
+      error: {
+        status: 400,
+        body: {
+          error: 'Dados inválidos',
+          details: [{ field: 'to', message: 'Data final não pode ser anterior à data inicial' }],
+        },
+      },
+    };
+  }
+
+  const filter = {
+    [ownerField]: ownerId,
+    status: status ? HISTORY_STATUS_CODES[status] : { $in: Object.values(HISTORY_STATUS_CODES) },
+  };
+
+  if (from || to) {
+    filter.createdAt = {};
+    if (from) filter.createdAt.$gte = from;
+    if (to) filter.createdAt.$lte = to;
+  }
+
+  const skip = (page - 1) * limit;
+
+  const [deliveries, total] = await Promise.all([
+    Delivery.find(filter)
+      .populate(populateField, populateSelect)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit),
+    Delivery.countDocuments(filter),
+  ]);
+
+  return {
+    body: {
+      data: deliveries,
+      page,
+      limit,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    },
+  };
+}
+
+
 // GET /stores/deliveries/history
 // Lista as entregas da loja autenticada que já chegaram a um estado final
 // (entregue, devolvida ou cancelada pela loja) — o espelho de
@@ -579,55 +644,64 @@ export const listStoreDeliveryHistory = async (req, res) => {
       return res.status(403).json({ error: 'Conta ainda não verificada.' });
     }
 
-    // Lemos os valores já validados/sanitizados via matchedData — NÃO de
-    // req.query diretamente. No Express 5, req.query é um getter que
-    // reparseia a URL a cada acesso, então as sanitizações do
-    // express-validator (toDate/toInt/customSanitizer) nunca chegam a
-    // req.query; matchedData(req) é a forma correta de pegar os valores já
-    // convertidos (ver historyQueryValidator).
-    const { status, from, to, page = 1, limit = 20 } = matchedData(req, { locations: ['query'] });
-
-    if (from && to && to < from) {
-      return res.status(400).json({
-        error: 'Dados inválidos',
-        details: [{ field: 'to', message: 'Data final não pode ser anterior à data inicial' }],
-      });
-    }
-
-    const filter = {
-      store: storeId,
-      status: status ? HISTORY_STATUS_CODES[status] : { $in: Object.values(HISTORY_STATUS_CODES) },
-    };
-
-    if (from || to) {
-      filter.createdAt = {};
-      if (from) filter.createdAt.$gte = from;
-      if (to) filter.createdAt.$lte = to;
-    }
-
-    const skip = (page - 1) * limit;
-
-    const [deliveries, total] = await Promise.all([
-      Delivery.find(filter)
-        .populate('rider', 'name phone avatar vehicle rating')
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit),
-      Delivery.countDocuments(filter),
-    ]);
-
-    return res.status(200).json({
-      data: deliveries,
-      page,
-      limit,
-      total,
-      totalPages: Math.max(1, Math.ceil(total / limit)),
+    const result = await findDeliveryHistory(req, {
+      ownerField: 'store',
+      ownerId: storeId,
+      populateField: 'rider',
+      populateSelect: 'name phone avatar vehicle rating',
     });
+
+    if (result.error) {
+      return res.status(result.error.status).json(result.error.body);
+    }
+
+    return res.status(200).json(result.body);
   } catch (error) {
     console.error('Erro no listStoreDeliveryHistory:', error);
     return res.status(500).json({ error: 'Erro interno do servidor.' });
   }
 };
+
+// GET /riders/deliveries/history
+// Lista as entregas do rider autenticado que já chegaram a um estado final:
+// entregue (4), devolvida por ele (5), ou cancelada pela loja (6) DEPOIS
+// que ele já tinha aceitado (a loja pode cancelar até o status 1 — ver
+// cancelDeliveryByStore — e o campo rider é mantido nesse caso justamente
+// como registro de quem tinha aceitado). Mesmos filtros de
+// status/período/paginação do histórico da loja.
+//
+// Não inclui entregas que o PRÓPRIO rider cancelou antes da retirada: essa
+// transição (ver cancelDeliveryByRider) devolve a entrega ao pool com
+// rider: null, então ela deixa de estar associada a este rider no banco —
+// não há como listá-la aqui sem reconstruir a partir do array `events`, o
+// que fica fora do escopo deste endpoint por ora.
+export const listRiderDeliveryHistory = async (req, res) => {
+  try {
+    const riderId = req.user?.id;
+
+    const { rider, error, status } = await findEligibleRider(riderId);
+    if (!rider) {
+      return res.status(status).json({ error });
+    }
+
+    const result = await findDeliveryHistory(req, {
+      ownerField: 'rider',
+      ownerId: riderId,
+      populateField: 'store',
+      populateSelect: 'name avatar address.district',
+    });
+
+    if (result.error) {
+      return res.status(result.error.status).json(result.error.body);
+    }
+
+    return res.status(200).json(result.body);
+  } catch (error) {
+    console.error('Erro no listRiderDeliveryHistory:', error);
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};
+
 
 // POST /stores/deliveries/:id/cancel
 // status 0 ou 1 (ainda sem pacote retirado) → 6, cancelada pela loja.

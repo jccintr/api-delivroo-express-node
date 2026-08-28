@@ -5,7 +5,7 @@ import * as DeliveryController from '../controllers/delivery.controller.js';
 import AuthRider from '../middlewares/auth.rider.js';
 import {validate} from '../middlewares/validate.js'
 import { registerValidator, loginValidator,accountVerificationValidator,resetPasswordValidator,updateProfileValidator,updateVehicleValidator } from '../validators/rider.validator.js';
-import { deliveryReasonValidator } from '../validators/delivery.validator.js';
+import { deliveryReasonValidator, historyQueryValidator } from '../validators/delivery.validator.js';
 import { uploadAvatar as uploadMiddleware } from '../middlewares/upload.avatar.js';
 
 const router = Router();
@@ -25,6 +25,7 @@ router.patch('/me/status', AuthRider,RiderController.toggleOnlineStatus);
 router.patch('/me/vehicle',AuthRider,updateVehicleValidator, validate,RiderController.updateVehicle);
 router.get('/deliveries/available', AuthRider, DeliveryController.listAvailableDeliveries);
 router.get('/deliveries/active', AuthRider, DeliveryController.listActiveDeliveries);
+router.get('/deliveries/history', AuthRider, historyQueryValidator, validate, DeliveryController.listRiderDeliveryHistory);
 router.get('/deliveries/:id', AuthRider, DeliveryController.getDelivery);
 router.post('/deliveries/:id/accept', AuthRider, DeliveryController.acceptDelivery);
 router.post('/deliveries/:id/pickup', AuthRider, DeliveryController.pickupDelivery);
