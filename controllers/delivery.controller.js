@@ -4,6 +4,7 @@ import Rider from '../models/rider.js';
 import { distanceBetween } from '../utils/googleMaps.js';
 import { buildStoreAddressText } from '../utils/address.js';
 import { notifyStore } from '../websocket.js';
+import { matchedData } from 'express-validator';
 
 
 // TODO: substituir por um cálculo real (baseado em distância, categoria do
@@ -552,7 +553,8 @@ const HISTORY_STATUS_CODES = {
 // (entregue, devolvida ou cancelada pela loja) — o espelho de
 // listStoreActiveDeliveries, mas para o que já aconteceu. Como esse
 // conjunto só cresce com o tempo, é sempre paginado e aceita filtros por
-// status e por período (createdAt).
+// status e por período (createdAt, ancorado no dia civil de Brasília — ver
+// historyQueryValidator).
 //
 // Query params (todos opcionais):
 //   status: 'delivered' | 'returned' | 'cancelled' — default: todos os 3
@@ -577,9 +579,20 @@ export const listStoreDeliveryHistory = async (req, res) => {
       return res.status(403).json({ error: 'Conta ainda não verificada.' });
     }
 
-    const { status, from, to } = req.query;
-    const page = req.query.page || 1;
-    const limit = req.query.limit || 20;
+    // Lemos os valores já validados/sanitizados via matchedData — NÃO de
+    // req.query diretamente. No Express 5, req.query é um getter que
+    // reparseia a URL a cada acesso, então as sanitizações do
+    // express-validator (toDate/toInt/customSanitizer) nunca chegam a
+    // req.query; matchedData(req) é a forma correta de pegar os valores já
+    // convertidos (ver historyQueryValidator).
+    const { status, from, to, page = 1, limit = 20 } = matchedData(req, { locations: ['query'] });
+
+    if (from && to && to < from) {
+      return res.status(400).json({
+        error: 'Dados inválidos',
+        details: [{ field: 'to', message: 'Data final não pode ser anterior à data inicial' }],
+      });
+    }
 
     const filter = {
       store: storeId,
@@ -589,18 +602,7 @@ export const listStoreDeliveryHistory = async (req, res) => {
     if (from || to) {
       filter.createdAt = {};
       if (from) filter.createdAt.$gte = from;
-      if (to) {
-        // `to` já vem convertido para Date pelo validator (00:00 UTC do
-        // dia), e a loja espera que o dia final seja inclusivo — por isso
-        // vai até o fim do dia (23:59:59.999) em vez de parar na meia-noite.
-        // Usa setUTCHours (não setHours) para não depender do fuso horário
-        // do servidor — o `from` também é interpretado em UTC pelo
-        // toDate() do validator, então os dois extremos do range precisam
-        // usar a mesma referência de fuso.
-        const endOfDay = new Date(to);
-        endOfDay.setUTCHours(23, 59, 59, 999);
-        filter.createdAt.$lte = endOfDay;
-      }
+      if (to) filter.createdAt.$lte = to;
     }
 
     const skip = (page - 1) * limit;

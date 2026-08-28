@@ -98,8 +98,40 @@ export const deliveryReasonValidator = [
 
 const HISTORY_STATUS_FILTERS = ['delivered', 'returned', 'cancelled'];
 
+// Brasil não observa horário de verão desde 2019 (Lei nº 13.972/2019), então
+// um offset fixo de -03:00 é seguro o ano inteiro — sem precisar de uma lib
+// de fusos horários pra isso.
+const BRAZIL_UTC_OFFSET = '-03:00';
+
+// Datas "soltas" (AAAA-MM-DD) no filtro de histórico são ancoradas no dia
+// civil de Brasília, não em UTC — sem isso, uma entrega criada à noite
+// (horário de Brasília) já vira "o dia seguinte" em UTC e fica fora do
+// filtro que a loja esperava ver. Se o chamador já mandar um ISO8601
+// completo com hora/offset própria, respeitamos exatamente como veio.
+function toBrazilDayStart(value) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return new Date(`${value}T00:00:00${BRAZIL_UTC_OFFSET}`);
+  }
+  return new Date(value);
+}
+
+function toBrazilDayEnd(value) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return new Date(`${value}T23:59:59.999${BRAZIL_UTC_OFFSET}`);
+  }
+  return new Date(value);
+}
+
 // GET /stores/deliveries/history — filtro por status (concluída/devolvida/
 // cancelada), período (createdAt) e paginação.
+//
+// Importante: no Express 5, `req.query` é um getter que reparseia a URL a
+// cada acesso — então sanitizadores do express-validator (toDate/toInt/
+// customSanitizer) NÃO "grudam" em req.query como grudavam no Express 4.
+// Por isso a checagem de "to não pode ser antes de from" não pode mais
+// viver aqui como um .custom() que lê req.query.from (valor cru, sem
+// sanitização) — ela foi movida para o controller, que lê os valores já
+// convertidos via matchedData(req) em vez de req.query diretamente.
 export const historyQueryValidator = [
   query('status')
     .optional()
@@ -108,18 +140,12 @@ export const historyQueryValidator = [
   query('from')
     .optional()
     .isISO8601().withMessage('Data inicial inválida (use AAAA-MM-DD)')
-    .toDate(),
+    .customSanitizer(toBrazilDayStart),
 
   query('to')
     .optional()
     .isISO8601().withMessage('Data final inválida (use AAAA-MM-DD)')
-    .toDate()
-    .custom((to, { req }) => {
-      if (req.query.from && to < new Date(req.query.from)) {
-        throw new Error('Data final não pode ser anterior à data inicial');
-      }
-      return true;
-    }),
+    .customSanitizer(toBrazilDayEnd),
 
   query('page')
     .optional()
