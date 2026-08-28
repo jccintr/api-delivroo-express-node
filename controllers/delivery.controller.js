@@ -539,6 +539,94 @@ export const listStoreActiveDeliveries = async (req, res) => {
   }
 };
 
+// Mapeia o filtro de status amigável da query string pro código numérico
+// persistido no banco (ver comentário de status em models/delivery.js).
+const HISTORY_STATUS_CODES = {
+  delivered: 4,
+  returned: 5,
+  cancelled: 6,
+};
+
+// GET /stores/deliveries/history
+// Lista as entregas da loja autenticada que já chegaram a um estado final
+// (entregue, devolvida ou cancelada pela loja) — o espelho de
+// listStoreActiveDeliveries, mas para o que já aconteceu. Como esse
+// conjunto só cresce com o tempo, é sempre paginado e aceita filtros por
+// status e por período (createdAt).
+//
+// Query params (todos opcionais):
+//   status: 'delivered' | 'returned' | 'cancelled' — default: todos os 3
+//   from, to: datas (AAAA-MM-DD) que delimitam createdAt
+//   page: página, começando em 1 (default 1)
+//   limit: itens por página, 1-100 (default 20)
+export const listStoreDeliveryHistory = async (req, res) => {
+  try {
+    const storeId = req.user?.id;
+
+    const store = await Store.findById(storeId).select('name active emailVerifiedAt');
+
+    if (!store) {
+      return res.status(404).json({ error: 'Loja não encontrada.' });
+    }
+
+    if (!store.active) {
+      return res.status(403).json({ error: 'Conta desativada.' });
+    }
+
+    if (!store.emailVerifiedAt) {
+      return res.status(403).json({ error: 'Conta ainda não verificada.' });
+    }
+
+    const { status, from, to } = req.query;
+    const page = req.query.page || 1;
+    const limit = req.query.limit || 20;
+
+    const filter = {
+      store: storeId,
+      status: status ? HISTORY_STATUS_CODES[status] : { $in: Object.values(HISTORY_STATUS_CODES) },
+    };
+
+    if (from || to) {
+      filter.createdAt = {};
+      if (from) filter.createdAt.$gte = from;
+      if (to) {
+        // `to` já vem convertido para Date pelo validator (00:00 UTC do
+        // dia), e a loja espera que o dia final seja inclusivo — por isso
+        // vai até o fim do dia (23:59:59.999) em vez de parar na meia-noite.
+        // Usa setUTCHours (não setHours) para não depender do fuso horário
+        // do servidor — o `from` também é interpretado em UTC pelo
+        // toDate() do validator, então os dois extremos do range precisam
+        // usar a mesma referência de fuso.
+        const endOfDay = new Date(to);
+        endOfDay.setUTCHours(23, 59, 59, 999);
+        filter.createdAt.$lte = endOfDay;
+      }
+    }
+
+    const skip = (page - 1) * limit;
+
+    const [deliveries, total] = await Promise.all([
+      Delivery.find(filter)
+        .populate('rider', 'name phone avatar vehicle rating')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      Delivery.countDocuments(filter),
+    ]);
+
+    return res.status(200).json({
+      data: deliveries,
+      page,
+      limit,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    });
+  } catch (error) {
+    console.error('Erro no listStoreDeliveryHistory:', error);
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};
+
 // POST /stores/deliveries/:id/cancel
 // status 0 ou 1 (ainda sem pacote retirado) → 6, cancelada pela loja.
 // Depois que o rider já retirou o pacote (status 2+), a loja não pode mais

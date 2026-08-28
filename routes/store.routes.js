@@ -11,7 +11,7 @@ import {
     updateProfileValidator,
     
 } from '../validators/store.validator.js'
-import { createDeliveryValidator, deliveryReasonValidator } from '../validators/delivery.validator.js';
+import { createDeliveryValidator, deliveryReasonValidator, historyQueryValidator } from '../validators/delivery.validator.js';
 import { uploadAvatar as uploadMiddleware } from '../middlewares/upload.avatar.js';
 
 
@@ -29,6 +29,7 @@ router.post('/password/verify-code',StoreController.verifyPasswordCode);
 router.post('/password/reset',resetPasswordValidator, validate, StoreController.resetPassword);
 router.post('/deliveries', AuthStore, createDeliveryValidator, validate, DeliveryController.createDelivery);
 router.get('/deliveries/active', AuthStore, DeliveryController.listStoreActiveDeliveries);
+router.get('/deliveries/history', AuthStore, historyQueryValidator, validate, DeliveryController.listStoreDeliveryHistory);
 router.post('/deliveries/:id/cancel', AuthStore, deliveryReasonValidator, validate, DeliveryController.cancelDeliveryByStore);
 
 export default router;

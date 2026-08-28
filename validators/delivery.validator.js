@@ -1,4 +1,4 @@
-import { body } from 'express-validator';
+import { body, query  } from 'express-validator';
 
 const PACKAGE_CATEGORIES = ['Comida', 'Documentos', 'Pacote', 'Medicamentos', 'Peças', 'Outros'];
 const PAYMENT_METHODS = ['Dinheiro', 'Cartão Crédito', 'Cartão Débito', 'Pago', 'Nada a Pagar'];
@@ -94,4 +94,40 @@ export const deliveryReasonValidator = [
     .trim()
     .notEmpty().withMessage('Motivo é obrigatório')
     .isLength({ min: 3 }).withMessage('Descreva o motivo com um pouco mais de detalhe'),
+];
+
+const HISTORY_STATUS_FILTERS = ['delivered', 'returned', 'cancelled'];
+
+// GET /stores/deliveries/history — filtro por status (concluída/devolvida/
+// cancelada), período (createdAt) e paginação.
+export const historyQueryValidator = [
+  query('status')
+    .optional()
+    .isIn(HISTORY_STATUS_FILTERS).withMessage(`Status deve ser um de: ${HISTORY_STATUS_FILTERS.join(', ')}`),
+
+  query('from')
+    .optional()
+    .isISO8601().withMessage('Data inicial inválida (use AAAA-MM-DD)')
+    .toDate(),
+
+  query('to')
+    .optional()
+    .isISO8601().withMessage('Data final inválida (use AAAA-MM-DD)')
+    .toDate()
+    .custom((to, { req }) => {
+      if (req.query.from && to < new Date(req.query.from)) {
+        throw new Error('Data final não pode ser anterior à data inicial');
+      }
+      return true;
+    }),
+
+  query('page')
+    .optional()
+    .isInt({ min: 1 }).withMessage('Página deve ser um número inteiro a partir de 1')
+    .toInt(),
+
+  query('limit')
+    .optional()
+    .isInt({ min: 1, max: 100 }).withMessage('Limite deve ser um número inteiro entre 1 e 100')
+    .toInt(),
 ];
