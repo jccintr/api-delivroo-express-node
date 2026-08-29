@@ -4,6 +4,7 @@ import Rider from '../models/rider.js';
 import { distanceBetween } from '../utils/googleMaps.js';
 import { buildStoreAddressText } from '../utils/address.js';
 import { notifyStore } from '../websocket.js';
+import { notifyNewDeliveryAvailable, notifyRiderDeliveryCancelled } from '../utils/pushNotifications.js';
 import { matchedData } from 'express-validator';
 
 
@@ -100,6 +101,10 @@ export const createDelivery = async (req, res) => {
     });
 
     await delivery.save();
+
+    notifyNewDeliveryAvailable(delivery, store.name).catch((error) => {
+      console.error('Erro ao notificar riders sobre nova entrega:', error);
+    });
 
     return res.status(201).json(delivery);
   } catch (error) {
@@ -756,8 +761,15 @@ export const cancelDeliveryByStore = async (req, res) => {
       return res.status(409).json({ error: 'Não foi possível cancelar esta entrega.' });
     }
 
-    // TODO: quando o rider já tinha aceitado (status era 1), notificá-lo
-    // (push) de que a loja cancelou a entrega em andamento.
+    // Se o rider já tinha aceitado (status era 1, e por isso o campo rider
+    // segue preenchido no documento retornado acima), avisa ele que a loja
+    // cancelou. Mesmo raciocínio de "best-effort, não bloqueia a resposta"
+    // do createDelivery.
+    if (delivery.rider) {
+      notifyRiderDeliveryCancelled(delivery.rider, delivery).catch((error) => {
+        console.error('Erro ao notificar rider sobre cancelamento pela loja:', error);
+      });
+    }
 
     return res.status(200).json(delivery);
   } catch (error) {

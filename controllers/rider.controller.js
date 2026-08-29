@@ -483,3 +483,31 @@ export const updateVehicle = async (req, res) => {
     return res.status(500).json({ error: 'Erro interno do servidor.' });
   }
 };
+
+// PATCH /riders/me/push-token
+// Salva/atualiza o Expo push token do rider autenticado. O app chama isso
+// logo após o login (ver AuthContext no app), sempre que obtém um token —
+// reenviar o mesmo token de novo não tem efeito colateral (é uma
+// substituição simples), então o app pode chamar isso sem se preocupar em
+// checar se já enviou antes.
+export const updatePushToken = async (req, res) => {
+  try {
+    const riderId = req.user?.id;
+    const { pushToken } = req.body;
+
+    const rider = await Rider.findByIdAndUpdate(
+      riderId,
+      { pushToken },
+      { returnDocument: 'after' },
+    ).select('pushToken');
+
+    if (!rider) {
+      return res.status(404).json({ error: 'Rider não encontrado.' });
+    }
+
+    return res.status(200).json({ pushToken: rider.pushToken });
+  } catch (error) {
+    console.error('Erro no updatePushToken:', error);
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};

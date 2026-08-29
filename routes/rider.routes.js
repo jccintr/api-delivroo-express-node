@@ -4,7 +4,7 @@ import * as RiderController from '../controllers/rider.controller.js';
 import * as DeliveryController from '../controllers/delivery.controller.js';
 import AuthRider from '../middlewares/auth.rider.js';
 import {validate} from '../middlewares/validate.js'
-import { registerValidator, loginValidator,accountVerificationValidator,resetPasswordValidator,updateProfileValidator,updateVehicleValidator } from '../validators/rider.validator.js';
+import { registerValidator, loginValidator,accountVerificationValidator,resetPasswordValidator,updateProfileValidator,updateVehicleValidator, updatePushTokenValidator } from '../validators/rider.validator.js';
 import { deliveryReasonValidator, historyQueryValidator } from '../validators/delivery.validator.js';
 import { uploadAvatar as uploadMiddleware } from '../middlewares/upload.avatar.js';
 
@@ -23,6 +23,7 @@ router.patch('/me/avatar', AuthRider,uploadMiddleware.single('avatar'),RiderCont
 router.patch('/me/document', AuthRider,uploadMiddleware.single('document'),RiderController.uploadDocument);
 router.patch('/me/status', AuthRider,RiderController.toggleOnlineStatus);
 router.patch('/me/vehicle',AuthRider,updateVehicleValidator, validate,RiderController.updateVehicle);
+router.patch('/me/push-token', AuthRider, updatePushTokenValidator, validate, RiderController.updatePushToken);
 router.get('/deliveries/available', AuthRider, DeliveryController.listAvailableDeliveries);
 router.get('/deliveries/active', AuthRider, DeliveryController.listActiveDeliveries);
 router.get('/deliveries/history', AuthRider, historyQueryValidator, validate, DeliveryController.listRiderDeliveryHistory);

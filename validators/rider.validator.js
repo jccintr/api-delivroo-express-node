@@ -80,3 +80,13 @@ export const updateVehicleValidator = [
    body('vehicleType')
    .isIn(['Carro', 'Moto', 'Bicicleta']).withMessage('Tipo de veículo inválido. Deve ser Carro, Moto ou Bicicleta'),
 ];
+
+// Aceita tanto o formato antigo (ExponentPushToken[...]) quanto o atual
+// (ExpoPushToken[...]) do SDK da Expo — mesma checagem de formato usada
+// em utils/pushNotifications.js antes de enviar.
+export const updatePushTokenValidator = [
+  body('pushToken')
+    .trim()
+    .notEmpty().withMessage('Push token é obrigatório')
+    .matches(/^Expo(nent)?PushToken\[.+\]$/).withMessage('Push token com formato inválido'),
+];
