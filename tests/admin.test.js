@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import app from '../app.js';
-import Admin from '../models/admin.js';
+//import Admin from '../models/admin.js';
 import Rider from '../models/rider.js';
 import Store from '../models/store.js';
-import bcryptjs from 'bcryptjs';
-import jsonwebtoken from 'jsonwebtoken';
+import City from '../models/city.js';
+//import bcryptjs from 'bcryptjs';
+//import jsonwebtoken from 'jsonwebtoken';
 import {createAdmin,createAdminWithToken,createStore} from './factories/admin.factory.js'
 import {createStore} from './factories/store.factory.js'
 import {createRider} from './factories/rider.factory.js'
@@ -416,5 +417,163 @@ describe('Admin Routes', () => {
          expect(res.status).toBe(200);
          expect(res.body.message).toBe('Conta desativada com sucesso.');
       });
+  });
+  // =====================
+  // CREATE CITY
+  // =====================
+  describe('POST /api/admin/cities', () => {
+    let newCityPayload = {}
+    beforeEach(async () => {
+      
+       newCityPayload = {
+          name: 'São Paulo',
+          state: 'SP',  
+          slug: 'sao-paulo-sp',
+        };
+
+    })
+    
+    
+
+    it('deve retornar 401 quando não autenticado (sem token)', async () => {
+        const res = await request(app).post('/api/admin/cities')
+              .send(newCityPayload);
+  
+        expect(res.status).toBe(401);
+        expect(res.body.error).toBe('Não autorizado');
+    });
+    it('deve retornar 401 quando token for inválido', async () => {
+      const { token } = await createAdminWithToken({ password: '123456' });
+      const res = await request(app)
+        .post('/api/admin/cities')
+        .set('Authorization', `Bearer ${token}-invalido`)
+        .send(newCityPayload);
+
+      expect(res.status).toBe(401);
+      expect(res.body.error).toBe('Não autorizado');
+    });
+    it('deve retornar 400 quando nome não for informado', async () => {
+      const { token } = await createAdminWithToken({ password: '123456' });
+      delete newCityPayload.name;
+      const res = await request(app)
+        .post('/api/admin/cities')
+        .set('Authorization', `Bearer ${token}`)
+        .send(newCityPayload);
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('Dados inválidos');
+      expect(res.body.details).toBeInstanceOf(Array);
+      expect(res.body.details[0].message).toBe('Nome é obrigatório');
+    });
+    it('deve retornar 400 quando nome for inválido', async () => {
+      const { token } = await createAdminWithToken({ password: '123456' });
+      newCityPayload.name = 'Sa';
+      const res = await request(app)
+        .post('/api/admin/cities')
+        .set('Authorization', `Bearer ${token}`)
+        .send(newCityPayload);
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('Dados inválidos');
+      expect(res.body.details).toBeInstanceOf(Array);
+      expect(res.body.details[0].message).toBe('Nome deve ter pelo menos 3 caracteres');
+    });
+    it('deve retornar 400 quando estado não for informado', async () => {
+      const { token } = await createAdminWithToken({ password: '123456' });
+      delete newCityPayload.state;
+      const res = await request(app)
+        .post('/api/admin/cities')
+        .set('Authorization', `Bearer ${token}`)
+        .send(newCityPayload);
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('Dados inválidos');
+      expect(res.body.details).toBeInstanceOf(Array);
+      expect(res.body.details[0].message).toBe('Estado é obrigatório');
+    });
+    it('deve retornar 400 quando estado for inválido', async () => {
+      const { token } = await createAdminWithToken({ password: '123456' });
+      newCityPayload.state = 'JJ';
+      const res = await request(app)
+        .post('/api/admin/cities')
+        .set('Authorization', `Bearer ${token}`)
+        .send(newCityPayload);
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('Dados inválidos');
+      expect(res.body.details).toBeInstanceOf(Array);
+      expect(res.body.details[0].message).toBe('Estado inválido');
+    });
+    it('deve retornar 400 quando slug não for informado', async () => {
+      const { token } = await createAdminWithToken({ password: '123456' });
+      delete newCityPayload.slug;
+      const res = await request(app)
+        .post('/api/admin/cities')
+        .set('Authorization', `Bearer ${token}`)
+        .send(newCityPayload);
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('Dados inválidos');
+      expect(res.body.details).toBeInstanceOf(Array);
+      expect(res.body.details[0].message).toBe('Slug é obrigatório');
+    });
+    it('deve retornar 400 quando slug tiver menos de 6 caracteres', async () => {
+      const { token } = await createAdminWithToken({ password: '123456' });
+      newCityPayload.slug = 'Ita';
+      const res = await request(app)
+        .post('/api/admin/cities')
+        .set('Authorization', `Bearer ${token}`)
+        .send(newCityPayload);
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('Dados inválidos');
+      expect(res.body.details).toBeInstanceOf(Array);
+      expect(res.body.details[0].message).toBe('Slug deve ter pelo menos 6 caracteres');
+    });
+    it('deve retornar 400 quando slug for inválido', async () => {
+      const { token } = await createAdminWithToken({ password: '123456' });
+      newCityPayload.slug = 'sao-paulo-mg';
+      const res = await request(app)
+        .post('/api/admin/cities')
+        .set('Authorization', `Bearer ${token}`)
+        .send(newCityPayload);
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('Dados inválidos');
+      expect(res.body.details).toBeInstanceOf(Array);
+      expect(res.body.details[0].message).toContain('Slug inválido');
+    });
+    it('deve retornar 400 quando slug já existir', async () => {
+       const { token } = await createAdminWithToken({ password: '123456' });
+       await City.create({
+             name: 'São Paulo',
+             state: 'SP',
+             slug: 'sao-paulo-sp',
+        });
+       const res = await request(app)
+        .post('/api/admin/cities')
+        .set('Authorization', `Bearer ${token}`)
+        .send(newCityPayload);
+
+         expect(res.status).toBe(400);
+         expect(res.body.error).toBe('Já existe uma cidade com este slug.');
+    });
+    it('deve retornar 201 e cadastrar a cidade quando os dados forem válidos e o slug não existir', async () => {
+      const { token } = await createAdminWithToken({ password: '123456' });
+     
+       const res = await request(app)
+        .post('/api/admin/cities')
+        .set('Authorization', `Bearer ${token}`)
+        .send(newCityPayload);
+
+         expect(res.status).toBe(201);
+         expect(res.body.message).toBe('Cidade criada com sucesso.');
+         expect(res.body.city).toBeDefined();
+         expect(res.body.city.name).toBe(newCityPayload.name);
+         expect(res.body.city.state).toBe(newCityPayload.state);
+         expect(res.body.city.slug).toBe(newCityPayload.slug);
+    });
+
+    
   });
 });

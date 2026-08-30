@@ -3,6 +3,7 @@ import jsonwebtoken from 'jsonwebtoken';
 import Admin from '../models/admin.js';
 import Rider from '../models/rider.js';
 import Store from '../models/store.js';
+import City from '../models/city.js';
 import { sendRiderAccountApprovedEmail } from '../utils/sendEmailV2.js';
 
 export const register = async (req, res) => {
@@ -234,6 +235,58 @@ export const setStoreActive = async (req, res) => {
     });
   } catch (error) {
     console.error('Erro no setStoreActive:', error);
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};
+
+
+
+export const createCity = async (req, res) => {
+  try {
+    const { name, state, slug, active, center, radiusKm } = req.body;
+
+   
+    // Verifica se já existe cidade com o mesmo slug
+    const existingCity = await City.findOne({ slug: slug.toLowerCase().trim() });
+    if (existingCity) {
+      return res.status(400).json({ error: 'Já existe uma cidade com este slug.' });
+    }
+
+    // Monta o objeto da cidade
+    const cityData = {
+      name: name.trim(),
+      state: state.toUpperCase().trim(),
+      slug: slug.toLowerCase().trim(),
+      active: typeof active === 'boolean' ? active : true
+    };
+
+    // Campos opcionais
+    if (center && center.latitude != null && center.longitude != null) {
+      cityData.center = {
+        latitude: center.latitude,
+        longitude: center.longitude
+      };
+    }
+
+    if (radiusKm != null) {
+      cityData.radiusKm = radiusKm;
+    }
+
+    const city = new City(cityData);
+    await city.save();
+
+    return res.status(201).json({
+      message: 'Cidade criada com sucesso.',
+      city
+    });
+  } catch (error) {
+    console.error('Erro no createCity:', error);
+
+    // Trata erro de unique do MongoDB (caso o índice unique dispare)
+    if (error.code === 11000) {
+      return res.status(400).json({ error: 'Já existe uma cidade com este slug.' });
+    }
+
     return res.status(500).json({ error: 'Erro interno do servidor.' });
   }
 };

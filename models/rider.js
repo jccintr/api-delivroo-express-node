@@ -22,7 +22,12 @@ const riderSchema = new mongoose.Schema({
     type: String,
     required: false,
     default: null
-  },
+  },/*
+  city: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'City',
+    required: true
+  },*/
   avatar: {
     type: String,
     required: false,

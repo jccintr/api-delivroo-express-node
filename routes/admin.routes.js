@@ -3,7 +3,7 @@ import { Router } from 'express';
 import * as AdminController from '../controllers/admin.controller.js';
 import AuthAdmin from '../middlewares/auth.admin.js';
 import {validate} from '../middlewares/validate.js'
-import { registerValidator, loginValidator } from '../validators/admin.validator.js';
+import { registerValidator, loginValidator, createCityValidator } from '../validators/admin.validator.js';
 
 const router = Router();
 
@@ -14,5 +14,6 @@ router.post('/create', AuthAdmin,registerValidator, validate, AdminController.re
 router.patch('/riders/:id/approve', AuthAdmin, AdminController.approveRider);
 router.patch('/riders/:id/active', AuthAdmin, AdminController.setRiderActive);
 router.patch('/stores/:id/active', AuthAdmin, AdminController.setStoreActive);
+router.post('/cities', AuthAdmin,createCityValidator, validate, AdminController.createCity);
 
 export default router;
