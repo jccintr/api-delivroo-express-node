@@ -3,8 +3,6 @@ import request from 'supertest';
 import app from '../app.js';
 import Rider from '../models/rider.js';
 import City from '../models/city.js';
-
-//import jsonwebtoken from 'jsonwebtoken';
 import {createRider,createRiderWithToken} from './factories/rider.factory.js'
 import { createCity } from './factories/city.factory.js';
 // Mock the sendEmail function to avoid sending real emails during tests

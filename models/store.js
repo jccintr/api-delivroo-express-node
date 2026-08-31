@@ -28,13 +28,18 @@ const storeSchema = new mongoose.Schema({
     required: false,
     default: null
   },
+  city: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'City',
+    required: true
+  },
   address:{
       street: String,
       number: String,
       complement: String,
       district: String,
-      city: String,
-      state: String,
+      //city: String,
+      //state: String,
       zipCode: String,
       latitude: Number,
       longitude: Number

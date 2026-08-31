@@ -1,6 +1,7 @@
 import bcryptjs from 'bcryptjs';
 import jsonwebtoken from 'jsonwebtoken';
 import Store from '../models/store.js';
+import City from '../models/city.js';
 import { generateVerificationCode,sendStoreVerificationAccountEmail,sendStoreAccountVerifiedEmail,sendStorePasswordResetEmail }  from '../utils/sendEmailV2.js'
 import cloudinary from '../utils/cloudinary.js';
 import { geocodeAddress } from '../utils/googleMaps.js';
@@ -9,8 +10,19 @@ import { buildStoreAddressText } from '../utils/address.js';
 
 export const register = async (req, res) => {
   try {
-    const { name, email, password, phone } = req.body;
+    const { name, email, password, phone, cityId } = req.body;
 
+    // verifica se a cidade existe e está ativa
+    const city = await City.findById(cityId).select('_id active');
+
+    if (!city) {
+      return res.status(400).json({ error: 'Cidade não encontrada.' });
+    }
+    
+    if (!city.active) {
+      return res.status(400).json({ error: 'Cidade não está disponível para cadastro.' });
+    }
+    
     // Verifica se o email já existe
     const existingStore = await Store.findOne({ email });
     if (existingStore) {
@@ -25,6 +37,7 @@ export const register = async (req, res) => {
       name,
       email,
       phone,
+      city: cityId,
       password: hashedPassword,
       emailVerificationCode
      });

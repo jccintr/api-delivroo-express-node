@@ -10,7 +10,6 @@ export const register = async (req, res) => {
     const { name, email, password, phone, doc, vehicleType, cityId } = req.body;
 
     // verifica se a cidade existe e está ativa
-
     const city = await City.findById(cityId).select('_id active');
 
     if (!city) {

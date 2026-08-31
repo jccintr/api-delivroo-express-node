@@ -1,7 +1,7 @@
 import bcryptjs from 'bcryptjs';
 import jsonwebtoken from 'jsonwebtoken';
 import Rider from '../../models/rider.js';
-import City from '../../models/city.js';
+//import City from '../../models/city.js';
 import { createCity } from './city.factory.js';
 /**
  * Cria um Rider no banco.
@@ -16,12 +16,7 @@ export async function createRider(overrides = {}) {
 
 
   const city = await createCity();
-  /*
-   || await City.create({
-      name: 'São Paulo',
-      state: 'SP',
-      slug: 'sao-paulo-sp',
-  });*/
+ 
   
 
   const rider = await Rider.create({

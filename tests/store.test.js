@@ -6,6 +6,7 @@ import bcryptjs from 'bcryptjs';
 import jsonwebtoken from 'jsonwebtoken';
 import * as sendEmail from '../utils/sendEmailV2.js';
 import {createStore,createStoreWithToken} from './factories/store.factory.js'
+import { createCity } from './factories/city.factory.js';
 
 const storePayload = {
   name: 'Pizzaria Alegria',
@@ -20,7 +21,9 @@ describe('Store Routes', () => {
   // =====================
   describe('POST /api/stores/register', () => {
     it('deve cadastrar uma loja com sucesso, gerar um código de verificação e enviar por email', async () => {
-           vi.spyOn(sendEmail, 'sendStoreVerificationAccountEmail').mockResolvedValue({});
+          const city = await createCity();
+          storePayload.cityId = city._id;
+          vi.spyOn(sendEmail, 'sendStoreVerificationAccountEmail').mockResolvedValue({});
           const res = await request(app)
             .post('/api/stores/register')
             .send(storePayload);
@@ -37,6 +40,8 @@ describe('Store Routes', () => {
         });
     
         it('deve retornar 400 se o email já existir', async () => {
+          const city = await createCity();
+          storePayload.cityId = city._id;
           await request(app).post('/api/stores/register').send(storePayload);
     
           const res = await request(app)
@@ -48,6 +53,8 @@ describe('Store Routes', () => {
         });
     
         it('deve retornar 400 se faltar campos obrigatórios', async () => {
+          const city = await createCity();
+          storePayload.cityId = city._id;
           const res = await request(app)
             .post('/api/stores/register')
             .send({ email: 'incompleto@test.com' });
@@ -65,12 +72,14 @@ describe('Store Routes', () => {
       beforeEach(async () => {
            const salt = await bcryptjs.genSalt(10);
            const hashedPassword = await bcryptjs.hash(storePayload.password, salt);
-     
+           const city = await createCity();
+          
            await Store.create({
              name: storePayload.name,
              email: storePayload.email,
              password: hashedPassword,
              phone: storePayload.phone,
+             city: city._id
            });
       });
       it('deve fazer login com sucesso e retornar token', async () => {
@@ -132,12 +141,14 @@ describe('Store Routes', () => {
      beforeEach(async () => {
         const salt = await bcryptjs.genSalt(10);
         const hashedPassword = await bcryptjs.hash(storePayload.password, salt);
-
+        const city = await createCity();
+       
         const store = await Store.create({
           name: storePayload.name,
           email: storePayload.email,
           password: hashedPassword,
           phone: storePayload.phone,
+          city: city._id
         });
 
         storeId = store._id;

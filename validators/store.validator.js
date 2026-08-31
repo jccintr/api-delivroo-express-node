@@ -25,6 +25,10 @@ export const registerStoreValidator = [
     .trim()
     .notEmpty().withMessage('Telefone é obrigatório'),
 
+  body('cityId')
+    .notEmpty().withMessage('Cidade é obrigatória')
+    .isMongoId().withMessage('ID da cidade inválido'),
+
   
 ];
 
