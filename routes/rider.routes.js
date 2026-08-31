@@ -3,7 +3,7 @@ import { Router } from 'express';
 import * as RiderController from '../controllers/rider.controller.js';
 import * as DeliveryController from '../controllers/delivery.controller.js';
 import AuthRider from '../middlewares/auth.rider.js';
-import {validate} from '../middlewares/validate.js'
+import { validate } from '../middlewares/validate.js'
 import { registerValidator, loginValidator,accountVerificationValidator,resetPasswordValidator,updateProfileValidator,updateVehicleValidator, updatePushTokenValidator } from '../validators/rider.validator.js';
 import { deliveryReasonValidator, historyQueryValidator } from '../validators/delivery.validator.js';
 import { uploadAvatar as uploadMiddleware } from '../middlewares/upload.avatar.js';
