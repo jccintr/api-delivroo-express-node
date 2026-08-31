@@ -98,12 +98,25 @@ describe('Rider Routes', () => {
     });
     it('deve retornar 400 se o email já existir', async () => {
       const city = await createCity();
-      riderPayload.cityId = city._id;
-      await request(app).post('/api/riders/register').send(riderPayload);
+      const payload = {
+        name: 'Paulo Entregador',
+        email: 'paulo@test.com',
+        password: '123456',
+        phone: '11999999999',
+        vehicleType: 'Moto',
+        cityId: city._id
+      };
+      vi.spyOn(sendEmail, 'sendRiderVerificationAccountEmail')
+       // 1º cadastro precisa ter sucesso
+      const first = await request(app).post('/api/riders/register').send(payload);
+     
+      expect(first.status).toBe(201);
 
-      const res = await request(app)
+       // 2º com o mesmo email
+
+       const res = await request(app)
         .post('/api/riders/register')
-        .send(riderPayload);
+        .send(payload);
 
       expect(res.status).toBe(400);
       expect(res.body.error).toBe('Email já cadastrado.');

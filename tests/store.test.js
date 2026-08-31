@@ -22,50 +22,62 @@ describe('Store Routes', () => {
   // REGISTER
   // =====================
   describe('POST /api/stores/register', () => {
-    it('deve cadastrar uma loja com sucesso, gerar um código de verificação e enviar por email', async () => {
-          const city = await createCity();
-          storePayload.cityId = city._id;
-          vi.spyOn(sendEmail, 'sendStoreVerificationAccountEmail').mockResolvedValue({});
-          const res = await request(app)
-            .post('/api/stores/register')
-            .send(storePayload);
-    
-           expect(sendEmail.sendStoreVerificationAccountEmail).toHaveBeenCalledWith(
-                    storePayload.email,
-                    expect.any(String)
-           );
-          expect(res.status).toBe(201);
-          expect(res.body.message).toBe('Conta criada com sucesso.');
-          expect(res.body.store).toBeDefined();
-          expect(res.body.store.email).toBe(storePayload.email);
-          expect(res.body.store.password).toBeUndefined(); 
-        });
-    
-        it('deve retornar 400 se o email já existir', async () => {
-          const city = await createCity();
-          storePayload.cityId = city._id;
-          await request(app).post('/api/stores/register').send(storePayload);
-    
-          const res = await request(app)
-            .post('/api/stores/register')
-            .send(storePayload);
-    
-          expect(res.status).toBe(400);
-          expect(res.body.error).toBe('Email já cadastrado.');
-        });
-    
-        it('deve retornar 400 se faltar campos obrigatórios', async () => {
-          const city = await createCity();
-          storePayload.cityId = city._id;
-          const res = await request(app)
-            .post('/api/stores/register')
-            .send({ email: 'incompleto@test.com' });
-    
-          expect(res.status).toBe(400);
-          expect(res.body.error).toBe('Dados inválidos');
-          expect(res.body.details).toBeInstanceOf(Array);
-        });
+    it('deve retornar 400 se o email já existir', async () => {
+        const city = await createCity();
+        const payload = {
+          name: 'Pizzaria Alegria',
+          email: 'alegria@test.com',
+          password: '123456',
+          phone: '11999999999',
+          cityId: city._id,
+        };
 
+        vi.spyOn(sendEmail, 'sendStoreVerificationAccountEmail').mockResolvedValue({});
+
+        // 1º cadastro precisa ter sucesso
+        const first = await request(app)
+          .post('/api/stores/register')
+          .send(payload);
+
+        expect(first.status).toBe(201);
+
+        // 2º com o mesmo email
+        const res = await request(app)
+          .post('/api/stores/register')
+          .send(payload);
+
+        expect(res.status).toBe(400);
+        expect(res.body.error).toBe('Email já cadastrado.');
+      });
+    it('deve retornar 400 se faltar campos obrigatórios', async () => {
+      const city = await createCity();
+      storePayload.cityId = city._id;
+      const res = await request(app)
+        .post('/api/stores/register')
+        .send({ email: 'incompleto@test.com' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('Dados inválidos');
+      expect(res.body.details).toBeInstanceOf(Array);
+    });
+    it('deve cadastrar uma loja com sucesso, gerar um código de verificação e enviar por email', async () => {
+        const city = await createCity();
+        storePayload.cityId = city._id;
+        vi.spyOn(sendEmail, 'sendStoreVerificationAccountEmail').mockResolvedValue({});
+        const res = await request(app)
+          .post('/api/stores/register')
+          .send(storePayload);
+
+          expect(sendEmail.sendStoreVerificationAccountEmail).toHaveBeenCalledWith(
+                  storePayload.email,
+                  expect.any(String)
+          );
+        expect(res.status).toBe(201);
+        expect(res.body.message).toBe('Conta criada com sucesso.');
+        expect(res.body.store).toBeDefined();
+        expect(res.body.store.email).toBe(storePayload.email);
+        expect(res.body.store.password).toBeUndefined(); 
+    });
   });
   // =====================
   // LOGIN
