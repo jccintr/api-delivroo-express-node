@@ -2,9 +2,11 @@ import { describe, it, expect, beforeEach,vi } from 'vitest';
 import request from 'supertest';
 import app from '../app.js';
 import Rider from '../models/rider.js';
+import City from '../models/city.js';
 
 //import jsonwebtoken from 'jsonwebtoken';
 import {createRider,createRiderWithToken} from './factories/rider.factory.js'
+import { createCity } from './factories/city.factory.js';
 // Mock the sendEmail function to avoid sending real emails during tests
 import * as sendEmail from '../utils/sendEmailV2.js';
 import bcryptjs from 'bcryptjs';
@@ -24,6 +26,8 @@ describe('Rider Routes', () => {
   // =====================
   describe('POST /api/riders/register', () => {
     it('deve cadastrar um rider com sucesso', async () => {
+      const city = await createCity();
+      riderPayload.cityId = city._id;
       vi.spyOn(sendEmail, 'sendRiderVerificationAccountEmail').mockResolvedValue({});
       const res = await request(app)
         .post('/api/riders/register')
@@ -42,8 +46,61 @@ describe('Rider Routes', () => {
       expect(res.body.rider.resetPasswordCode).toBeUndefined(); // este campo não deve ser enviado
       expect(res.body.rider.password).toBeUndefined(); // este campo não deve ser enviado
     });
+    it('deve retornar 400 se a cidade não for informada', async () => {
+      riderPayload.cityId = "";
+      await request(app).post('/api/riders/register').send(riderPayload);
 
+      const res = await request(app)
+        .post('/api/riders/register')
+        .send(riderPayload);
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('Dados inválidos');
+      expect(res.body.details).toBeInstanceOf(Array);
+      expect(res.body.details[0].message).toBe('Cidade é obrigatória');
+    });
+    it('deve retornar 400 se o id da cidade for inválido', async () => {
+      riderPayload.cityId = "not-a-valid-mongo-id";
+      await request(app).post('/api/riders/register').send(riderPayload);
+
+      const res = await request(app)
+        .post('/api/riders/register')
+        .send(riderPayload);
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('Dados inválidos');
+      expect(res.body.details).toBeInstanceOf(Array);
+      expect(res.body.details[0].message).toBe('ID da cidade inválido');
+    });
+    it('deve retornar 400 se a cidade não existir', async () => {
+      const city = await createCity();
+      riderPayload.cityId = city._id;
+      await City.findByIdAndDelete(city._id);
+      await request(app).post('/api/riders/register').send(riderPayload);
+
+      const res = await request(app)
+        .post('/api/riders/register')
+        .send(riderPayload);
+      
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('Cidade não encontrada.');
+    });
+    it('deve retornar 400 se a cidade não estiver ativa', async () => {
+      const city = await createCity();
+      riderPayload.cityId = city._id;
+      await City.findByIdAndUpdate(city._id, { active: false });
+      await request(app).post('/api/riders/register').send(riderPayload);
+
+      const res = await request(app)
+        .post('/api/riders/register')
+        .send(riderPayload);
+      
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('Cidade não está disponível para cadastro.');
+    });
     it('deve retornar 400 se o email já existir', async () => {
+      const city = await createCity();
+      riderPayload.cityId = city._id;
       await request(app).post('/api/riders/register').send(riderPayload);
 
       const res = await request(app)

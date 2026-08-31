@@ -1,7 +1,7 @@
 import bcryptjs from 'bcryptjs';
 import jsonwebtoken from 'jsonwebtoken';
 import Rider from '../../models/rider.js';
-
+import City from '../../models/city.js';
 /**
  * Cria um Rider no banco.
  * @param {object} overrides - campos para sobrescrever os defaults
@@ -13,12 +13,20 @@ export async function createRider(overrides = {}) {
   const password = overrides.password || '123456';
   const hashedPassword = await bcryptjs.hash(password, 10);
 
+  
+  const city = await City.create({
+      name: 'São Paulo',
+      state: 'SP',
+      slug: 'sao-paulo-sp',
+  });
+
   const rider = await Rider.create({
       name: 'Rider Teste',
       email: `rider${Date.now()}@test.com`,
       password: hashedPassword,
       phone: '+5511999999999',
       vehicle: { type: 'Moto' },
+      city: city._id,
       ...overrides,
       password: overrides.password  ? await bcryptjs.hash(overrides.password, 10) : hashedPassword,
  });

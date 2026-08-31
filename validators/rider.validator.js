@@ -22,6 +22,10 @@ export const registerValidator = [
   body('vehicleType')
     .optional()
     .isIn(['Carro', 'Moto', 'Bicicleta']).withMessage('Tipo de veículo inválido. Deve ser Carro, Moto ou Bicicleta'),
+  
+  body('cityId')
+  .notEmpty().withMessage('Cidade é obrigatória')
+  .isMongoId().withMessage('ID da cidade inválido'),
 ];
 
 export const loginValidator = [

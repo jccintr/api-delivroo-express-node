@@ -1,12 +1,25 @@
 import bcryptjs from 'bcryptjs';
 import jsonwebtoken from 'jsonwebtoken';
 import Rider from '../models/rider.js';
+import City from '../models/city.js';
 import { generateVerificationCode,sendRiderVerificationAccountEmail,sendAccountVerifiedEmail,sendRiderPasswordResetEmail }  from '../utils/sendEmailV2.js'
 import cloudinary from '../utils/cloudinary.js';
 
 export const register = async (req, res) => {
   try {
-    const { name, email, password, phone, doc, vehicleType } = req.body;
+    const { name, email, password, phone, doc, vehicleType, cityId } = req.body;
+
+    // verifica se a cidade existe e está ativa
+
+    const city = await City.findById(cityId).select('_id active');
+
+    if (!city) {
+      return res.status(400).json({ error: 'Cidade não encontrada.' });
+    }
+
+    if (!city.active) {
+      return res.status(400).json({ error: 'Cidade não está disponível para cadastro.' });
+    }
 
     // Verifica se o email já existe
     const existingRider = await Rider.findOne({ email });
@@ -31,6 +44,7 @@ export const register = async (req, res) => {
       password: hashedPassword,
       phone,
       doc: doc || null,
+      city: cityId,
       vehicle: vehicle || null,
       emailVerificationCode
     });
