@@ -1,16 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import app from '../app.js';
-//import Admin from '../models/admin.js';
 import Rider from '../models/rider.js';
 import Store from '../models/store.js';
 import City from '../models/city.js';
-//import bcryptjs from 'bcryptjs';
-//import jsonwebtoken from 'jsonwebtoken';
 import {createAdmin,createAdminWithToken,createStore} from './factories/admin.factory.js'
 import {createStore} from './factories/store.factory.js'
 import {createRider} from './factories/rider.factory.js'
-import {createCity} from './factories/city.factory.js'
 import * as sendEmail from '../utils/sendEmailV2.js';
 
 const adminPayload = {
@@ -19,13 +15,6 @@ const adminPayload = {
   password: '123456',
 };
 
-const riderPayload = {
-  name: 'João Entregador',
-  email: 'joao@test.com',
-  password: '123456',
-  phone: '11999999999',
-  vehicle: { type: 'Moto' },
-};
 
 
 
