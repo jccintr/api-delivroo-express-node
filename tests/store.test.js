@@ -7,6 +7,8 @@ import jsonwebtoken from 'jsonwebtoken';
 import * as sendEmail from '../utils/sendEmailV2.js';
 import {createStore,createStoreWithToken} from './factories/store.factory.js'
 import { createCity } from './factories/city.factory.js';
+import cloudinary from '../utils/cloudinary.js';
+import * as googleMaps from '../utils/googleMaps.js';
 
 const storePayload = {
   name: 'Pizzaria Alegria',
@@ -528,103 +530,381 @@ describe('Store Routes', () => {
           expect(updated.resetPasswordCodeExpiresAt).toBeNull();
         });
   });
-   // =====================
-    // Update Profile (PATCH /me)
-    // =====================
-    describe('PATCH /api/stores/me', () => {
-      it('deve retornar 401 quando não autenticado (sem token)', async () => {
-        const res = await request(app).patch('/api/stores/me');
-        expect(res.status).toBe(401);
-        expect(res.body.error).toBe('Não autorizado');
-      });
-      it('deve retornar 404 quando store não existir', async () => {
-        const { store,token } = await createStoreWithToken();
-        await Store.findByIdAndDelete(store._id);
-        const res = await request(app)
-          .patch('/api/stores/me')
-          .set('Authorization', `Bearer ${token}`)
-          .send({ name: 'John Doe',phone: '1234567890' ,doc: '1234567890' });
-  
-        expect(res.status).toBe(404);
-        expect(res.body.error).toBe('Loja não encontrada.');
-      });
-      it('deve retornar 403 quando a conta estiver não estiver verificada', async () => {
-        const { store,token } = await createStoreWithToken();
-       
-        const res = await request(app)
-          .patch('/api/stores/me')
-          .set('Authorization', `Bearer ${token}`)
-          .send({ name: 'John Doe',phone: '3534567890' ,doc: '1234567890' });
-  
-        expect(res.status).toBe(403);
-        expect(res.body.error).toBe('Conta ainda não verificada.');
-      });
-      
-      it('deve retornar 403 quando a conta estiver desativada', async () => {
-        const { store,token } = await createStoreWithToken();
-        await Store.findByIdAndUpdate(store._id, { active: false, emailVerifiedAt: new Date() });
-        const res = await request(app)
-          .patch('/api/stores/me')
-          .set('Authorization', `Bearer ${token}`)
-          .send({ name: 'John Doe',phone: '3534567890' ,doc: '1234567890' });
-  
-        expect(res.status).toBe(403);
-        expect(res.body.error).toBe('Conta desativada.');
-      });
-      it('deve retornar 400 quando nome tiver menos do que 3 caractres', async () => {
-        const { store,token } = await createStoreWithToken();
-        const res = await request(app)
-          .patch('/api/stores/me')
-          .set('Authorization', `Bearer ${token}`)
-          .send({ name: 'Jo',phone: '1234567890' ,doc: '1234567890' });
-  
-        expect(res.status).toBe(400);
-        expect(res.body.error).toBe('Dados inválidos');
-        expect(res.body.details).toBeInstanceOf(Array);
-        expect(res.body.details[0].message).toBe('Nome deve ter pelo menos 3 caracteres.');
-      });
-      it('deve retornar 400 quando o estado for inválido', async () => {
-        const { store,token } = await createStoreWithToken();
-        const res = await request(app)
-          .patch('/api/stores/me')
-          .set('Authorization', `Bearer ${token}`)
-          .send({ name: 'Cesar Burg',phone: '1234567890' ,doc: '1234567890', address: { state: 'XX' } });
-  
-        expect(res.status).toBe(400);
-        expect(res.body.error).toBe('Dados inválidos');
-        expect(res.body.details).toBeInstanceOf(Array);
-        expect(res.body.details[0].message).toBe('Estado inválido.');
-      });
-      
-      it('deve retornar 400 quando phone estiver em branco', async () => {
-        const { store,token } = await createStoreWithToken();
-        const res = await request(app)
-          .patch('/api/stores/me')
-          .set('Authorization', `Bearer ${token}`)
-          .send({ name: 'John Doe',phone: '' ,doc: '1234567890' });
-  
-        expect(res.status).toBe(400);
-        expect(res.body.error).toBe('Dados inválidos');
-        expect(res.body.details).toBeInstanceOf(Array);
-        expect(res.body.details[0].message).toBe('Telefone inválido.');
-      });
-      it('deve retornar 200, atualizar a loja e retornar a loja atualizada quando a loja existir, estiver validada e os dados forem validos', async () => { 
-      const { store,token } = await createStoreWithToken({emailVerifiedAt: new Date() });
+  // =====================
+  // Update Profile (PATCH /me)
+  // =====================
+  describe('PATCH /api/stores/me', () => {
+    it('deve retornar 401 quando não autenticado (sem token)', async () => {
+      const res = await request(app).patch('/api/stores/me');
+      expect(res.status).toBe(401);
+      expect(res.body.error).toBe('Não autorizado');
+    });
+    it('deve retornar 404 quando store não existir', async () => {
+      const { store,token } = await createStoreWithToken();
+      await Store.findByIdAndDelete(store._id);
+      const res = await request(app)
+        .patch('/api/stores/me')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'John Doe',phone: '1234567890' ,doc: '1234567890' });
+
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe('Loja não encontrada.');
+    });
+    it('deve retornar 403 quando a conta estiver não estiver verificada', async () => {
+      const { store,token } = await createStoreWithToken();
       
       const res = await request(app)
         .patch('/api/stores/me')
         .set('Authorization', `Bearer ${token}`)
-        .send({ name: 'John Doe',phone: '3534567890' ,doc: '1234567890', address: { state: 'SP' } });
-      const updated = await Store.findById(store._id);
-      expect(res.status).toBe(200);
-      expect(res.body.name).toBe(updated.name);
-      expect(res.body.phone).toBe(updated.phone);
-      expect(res.body.doc).toBe(updated.doc);
-      expect(res.body.address.state).toBe(updated.address.state);
-      expect(res.body.emailVerificationCode).toBeUndefined();
-      expect(res.body.resetPasswordCode).toBeUndefined();
-      expect(res.body.password).toBeUndefined();
-      });
-      
+        .send({ name: 'John Doe',phone: '3534567890' ,doc: '1234567890' });
+
+      expect(res.status).toBe(403);
+      expect(res.body.error).toBe('Conta ainda não verificada.');
     });
+    
+    it('deve retornar 403 quando a conta estiver desativada', async () => {
+      const { store,token } = await createStoreWithToken();
+      await Store.findByIdAndUpdate(store._id, { active: false, emailVerifiedAt: new Date() });
+      const res = await request(app)
+        .patch('/api/stores/me')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'John Doe',phone: '3534567890' ,doc: '1234567890' });
+
+      expect(res.status).toBe(403);
+      expect(res.body.error).toBe('Conta desativada.');
+    });
+    it('deve retornar 400 quando nome tiver menos do que 3 caractres', async () => {
+      const { store,token } = await createStoreWithToken();
+      const res = await request(app)
+        .patch('/api/stores/me')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'Jo',phone: '1234567890' ,doc: '1234567890' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('Dados inválidos');
+      expect(res.body.details).toBeInstanceOf(Array);
+      expect(res.body.details[0].message).toBe('Nome deve ter pelo menos 3 caracteres.');
+    });
+    it('deve retornar 400 quando o estado for inválido', async () => {
+      const { store,token } = await createStoreWithToken();
+      const res = await request(app)
+        .patch('/api/stores/me')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'Cesar Burg',phone: '1234567890' ,doc: '1234567890', address: { state: 'XX' } });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('Dados inválidos');
+      expect(res.body.details).toBeInstanceOf(Array);
+      expect(res.body.details[0].message).toBe('Estado inválido.');
+    });
+    
+    it('deve retornar 400 quando phone estiver em branco', async () => {
+      const { store,token } = await createStoreWithToken();
+      const res = await request(app)
+        .patch('/api/stores/me')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'John Doe',phone: '' ,doc: '1234567890' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('Dados inválidos');
+      expect(res.body.details).toBeInstanceOf(Array);
+      expect(res.body.details[0].message).toBe('Telefone inválido.');
+    });
+    it('deve retornar 200, atualizar a loja e retornar a loja atualizada quando a loja existir, estiver validada e os dados forem validos', async () => { 
+    const { store,token } = await createStoreWithToken({emailVerifiedAt: new Date() });
+    
+    const res = await request(app)
+      .patch('/api/stores/me')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ name: 'John Doe',phone: '3534567890' ,doc: '1234567890', address: { state: 'SP' } });
+    const updated = await Store.findById(store._id);
+    expect(res.status).toBe(200);
+    expect(res.body.name).toBe(updated.name);
+    expect(res.body.phone).toBe(updated.phone);
+    expect(res.body.doc).toBe(updated.doc);
+    expect(res.body.address.state).toBe(updated.address.state);
+    expect(res.body.emailVerificationCode).toBeUndefined();
+    expect(res.body.resetPasswordCode).toBeUndefined();
+    expect(res.body.password).toBeUndefined();
+    });
+    
+  });
+    // =====================
+  // Update Profile (PATCH /me)
+  // =====================
+  describe('PATCH /api/stores/me', () => {
+    it('deve retornar 401 quando não autenticado (sem token)', async () => {
+      const res = await request(app).patch('/api/stores/me');
+      expect(res.status).toBe(401);
+      expect(res.body.error).toBe('Não autorizado');
+    });
+
+    it('deve retornar 401 com token inválido', async () => {
+      const res = await request(app)
+        .patch('/api/stores/me')
+        .set('Authorization', 'Bearer token-invalido')
+        .send({ name: 'Nova Loja' });
+
+      expect(res.status).toBe(401);
+      expect(res.body.error).toBe('Não autorizado');
+    });
+
+    it('deve retornar 404 quando a loja não existir', async () => {
+      const { store, token } = await createStoreWithToken();
+      await Store.findByIdAndDelete(store._id);
+
+      const res = await request(app)
+        .patch('/api/stores/me')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'Nova Loja' });
+
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe('Loja não encontrada.');
+    });
+
+    it('deve retornar 403 quando a conta não estiver verificada', async () => {
+      const { store, token } = await createStoreWithToken();
+      // factory não seta emailVerifiedAt → já fica null, mas garantimos
+      await Store.findByIdAndUpdate(store._id, { emailVerifiedAt: null });
+
+      const res = await request(app)
+        .patch('/api/stores/me')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'Nova Loja' });
+
+      expect(res.status).toBe(403);
+      expect(res.body.error).toBe('Conta ainda não verificada.');
+    });
+
+    it('deve retornar 403 quando a conta estiver desativada', async () => {
+      const { store, token } = await createStoreWithToken();
+      await Store.findByIdAndUpdate(store._id, {
+        emailVerifiedAt: new Date(),
+        active: false,
+      });
+
+      const res = await request(app)
+        .patch('/api/stores/me')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'Nova Loja' });
+
+      expect(res.status).toBe(403);
+      expect(res.body.error).toBe('Conta desativada.');
+    });
+
+    it('deve retornar 400 quando o nome tiver menos de 3 caracteres', async () => {
+      const { store, token } = await createStoreWithToken();
+      await Store.findByIdAndUpdate(store._id, { emailVerifiedAt: new Date() });
+
+      const res = await request(app)
+        .patch('/api/stores/me')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'Ab' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('Dados inválidos');
+      expect(res.body.details).toBeInstanceOf(Array);
+      expect(res.body.details[0].message).toBe('Nome deve ter pelo menos 3 caracteres.');
+    });
+
+    it('deve retornar 400 quando o telefone estiver em branco', async () => {
+      const { store, token } = await createStoreWithToken();
+      await Store.findByIdAndUpdate(store._id, { emailVerifiedAt: new Date() });
+
+      const res = await request(app)
+        .patch('/api/stores/me')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ phone: '' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('Dados inválidos');
+      expect(res.body.details).toBeInstanceOf(Array);
+      expect(res.body.details[0].message).toBe('Telefone inválido.');
+    });
+
+    it('deve retornar 200 e atualizar name, phone e doc', async () => {
+      const { store, token } = await createStoreWithToken();
+      await Store.findByIdAndUpdate(store._id, { emailVerifiedAt: new Date() });
+
+      const res = await request(app)
+        .patch('/api/stores/me')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          name: 'Loja Atualizada',
+          phone: '11988887777',
+          doc: '12.345.678/0001-99',
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.name).toBe('Loja Atualizada');
+      expect(res.body.phone).toBe('11988887777');
+      expect(res.body.doc).toBe('12.345.678/0001-99');
+      expect(res.body.password).toBeUndefined();
+      expect(res.body.locationWarning).toBe(false);
+
+      const updated = await Store.findById(store._id);
+      expect(updated.name).toBe('Loja Atualizada');
+      expect(updated.phone).toBe('11988887777');
+      expect(updated.doc).toBe('12.345.678/0001-99');
+    });
+
+    it('deve retornar 200 e atualizar o endereço com geocodificação', async () => {
+      const { store, token } = await createStoreWithToken();
+      await Store.findByIdAndUpdate(store._id, { emailVerifiedAt: new Date() });
+
+      vi.spyOn(googleMaps, 'geocodeAddress').mockResolvedValue({
+        latitude: -23.5505,
+        longitude: -46.6333,
+      });
+
+      const res = await request(app)
+        .patch('/api/stores/me')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          address: {
+            street: 'Av. Paulista',
+            number: '1000',
+            district: 'Bela Vista',
+            zipCode: '01310-100',
+          },
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.address.street).toBe('Av. Paulista');
+      expect(res.body.address.number).toBe('1000');
+      expect(res.body.address.district).toBe('Bela Vista');
+      expect(res.body.address.zipCode).toBe('01310-100');
+      expect(res.body.address.latitude).toBe(-23.5505);
+      expect(res.body.address.longitude).toBe(-46.6333);
+      expect(res.body.locationWarning).toBe(false);
+      expect(googleMaps.geocodeAddress).toHaveBeenCalled();
+    });
+
+    it('deve retornar locationWarning true quando a geocodificação não encontrar o endereço', async () => {
+      const { store, token } = await createStoreWithToken();
+      await Store.findByIdAndUpdate(store._id, { emailVerifiedAt: new Date() });
+
+      vi.spyOn(googleMaps, 'geocodeAddress').mockResolvedValue(null);
+
+      const res = await request(app)
+        .patch('/api/stores/me')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          address: {
+            street: 'Rua Inexistente',
+            number: '999',
+            district: 'Centro',
+            zipCode: '00000-000',
+          },
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.address.street).toBe('Rua Inexistente');
+      expect(res.body.address.latitude).toBeNull();
+      expect(res.body.address.longitude).toBeNull();
+      expect(res.body.locationWarning).toBe(true);
+    });
+  });
+
+  // =====================
+  // Upload Avatar (PATCH /me/avatar)
+  // =====================
+  describe('PATCH /api/stores/me/avatar', () => {
+    beforeEach(() => {
+      vi.mock('../utils/cloudinary.js', async () => {
+        const mock = await import('./mocks/cloudinary.js');
+        return { default: mock.default };
+      });
+    });
+
+    it('deve retornar 401 quando não autenticado (sem token)', async () => {
+      const res = await request(app).patch('/api/stores/me/avatar');
+      expect(res.status).toBe(401);
+      expect(res.body.error).toBe('Não autorizado');
+    });
+
+    it('deve retornar 400 quando nenhuma imagem for enviada', async () => {
+      const { token } = await createStoreWithToken();
+
+      const res = await request(app)
+        .patch('/api/stores/me/avatar')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('Nenhuma imagem enviada.');
+    });
+
+    it('deve rejeitar arquivo que não seja imagem', async () => {
+      const { token } = await createStoreWithToken();
+
+      const res = await request(app)
+        .patch('/api/stores/me/avatar')
+        .set('Authorization', `Bearer ${token}`)
+        .attach('avatar', Buffer.from('not-an-image'), 'file.txt');
+
+      expect([400, 500]).toContain(res.status);
+    });
+
+    it('deve retornar 200 e atualizar o avatar quando a imagem for válida', async () => {
+      const { store, token } = await createStoreWithToken();
+
+      const pngBuffer = Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+        'base64'
+      );
+
+      const res = await request(app)
+        .patch('/api/stores/me/avatar')
+        .set('Authorization', `Bearer ${token}`)
+        .attach('avatar', pngBuffer, 'avatar.png');
+
+      expect(res.status).toBe(200);
+      expect(res.body.message).toBe('Avatar atualizado com sucesso.');
+      expect(res.body.avatar).toBe(
+        'https://res.cloudinary.com/demo/image/upload/v1/delivroo/riders/rider_test.jpg'
+      );
+
+      const updated = await Store.findById(store._id).select('avatar');
+      expect(updated.avatar).toBe(res.body.avatar);
+    });
+
+    it('deve retornar 404 quando a loja não existir', async () => {
+      const { store, token } = await createStoreWithToken();
+      await Store.findByIdAndDelete(store._id);
+
+      const pngBuffer = Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+        'base64'
+      );
+
+      const res = await request(app)
+        .patch('/api/stores/me/avatar')
+        .set('Authorization', `Bearer ${token}`)
+        .attach('avatar', pngBuffer, 'avatar.png');
+
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe('Loja não encontrada.');
+    });
+
+    it('deve retornar 500 quando o Cloudinary falhar', async () => {
+      cloudinary.uploader.upload_stream.mockImplementationOnce((options, callback) => {
+        return {
+          end: () => callback(new Error('Cloudinary error'), null),
+        };
+      });
+
+      const { token } = await createStoreWithToken();
+      const pngBuffer = Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+        'base64'
+      );
+
+      const res = await request(app)
+        .patch('/api/stores/me/avatar')
+        .set('Authorization', `Bearer ${token}`)
+        .attach('avatar', pngBuffer, 'avatar.png');
+
+      expect(res.status).toBe(500);
+    });
+  });
 });

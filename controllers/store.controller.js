@@ -289,15 +289,15 @@ export const updateProfile = async (req, res) => {
     const storeId = req.user?.id;
     const { name, phone, doc, address } = req.body;
 
-    const store = await Store.findById(storeId).select(
-      'name email phone avatar doc active emailVerifiedAt address '
-    );
+    const store = await Store.findById(storeId)
+      .select('name email phone avatar doc active emailVerifiedAt address city')
+      .populate('city', 'name state');
 
     if (!store) {
       return res.status(404).json({ error: 'Loja não encontrada.' });
     }
 
-     if (!store.emailVerifiedAt) {
+    if (!store.emailVerifiedAt) {
       return res.status(403).json({ error: 'Conta ainda não verificada.' });
     }
 
@@ -309,25 +309,18 @@ export const updateProfile = async (req, res) => {
     if (phone !== undefined) store.phone = phone;
     if (doc !== undefined) store.doc = doc || null;
 
-    // true quando o endereço foi salvo mas não conseguimos geocodificar
-    // (endereço não encontrado pelo Google, ou falha na chamada) — o front
-    // pode usar isso para avisar a loja de forma não-bloqueante.
     let locationWarning = false;
 
     if (address !== undefined && address !== null) {
       const previousAddress = store.address ? store.address.toObject() : {};
-      const ADDRESS_TEXT_FIELDS = ['street', 'number', 'complement', 'district', 'city', 'state', 'zipCode'];
+      // city/state saíram do address — vêm do model City
+      const ADDRESS_TEXT_FIELDS = ['street', 'number', 'complement', 'district', 'zipCode'];
 
-      // merge parcial: só sobrescreve campos de texto enviados. A coordenada
-      // nunca vem do cliente — é sempre derivada do texto via geocodificação
-      // logo abaixo, para não haver risco de lat/lng divergir do endereço.
       const mergedAddress = {
         street: address.street !== undefined ? address.street : previousAddress.street,
         number: address.number !== undefined ? address.number : previousAddress.number,
         complement: address.complement !== undefined ? address.complement : previousAddress.complement,
         district: address.district !== undefined ? address.district : previousAddress.district,
-        city: address.city !== undefined ? address.city : previousAddress.city,
-        state: address.state !== undefined ? address.state : previousAddress.state,
         zipCode: address.zipCode !== undefined ? address.zipCode : previousAddress.zipCode,
         latitude: previousAddress.latitude,
         longitude: previousAddress.longitude,
@@ -336,14 +329,13 @@ export const updateProfile = async (req, res) => {
       const addressTextChanged = ADDRESS_TEXT_FIELDS.some(
         (field) => (mergedAddress[field] || '') !== (previousAddress[field] || '')
       );
-      const missingLocation = previousAddress.latitude == null || previousAddress.longitude == null;
+      const missingLocation =
+        previousAddress.latitude == null || previousAddress.longitude == null;
 
       store.address = mergedAddress;
 
-      // Só chama o Google quando o texto mudou (ou nunca tivemos coordenada
-      // ainda) — evita geocodificar de novo a cada salvamento de perfil.
       if (addressTextChanged || missingLocation) {
-        const addressText = buildStoreAddressText(mergedAddress);
+        const addressText = buildStoreAddressText(mergedAddress, store.city);
 
         if (addressText) {
           try {
@@ -353,15 +345,12 @@ export const updateProfile = async (req, res) => {
               store.address.latitude = geocoded.latitude;
               store.address.longitude = geocoded.longitude;
             } else if (addressTextChanged) {
-              // Endereço mudou e o Google não encontrou: não faz sentido
-              // manter a coordenada antiga, ela apontaria pro lugar errado.
               store.address.latitude = null;
               store.address.longitude = null;
               locationWarning = true;
             }
           } catch (error) {
             console.error('Erro ao geocodificar endereço da loja:', error);
-            // Não bloqueia o salvamento do perfil por causa de uma falha do Google.
             if (addressTextChanged) {
               locationWarning = true;
             }
