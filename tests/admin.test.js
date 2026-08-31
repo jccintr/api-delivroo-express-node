@@ -10,6 +10,7 @@ import City from '../models/city.js';
 import {createAdmin,createAdminWithToken,createStore} from './factories/admin.factory.js'
 import {createStore} from './factories/store.factory.js'
 import {createRider} from './factories/rider.factory.js'
+import {createCity} from './factories/city.factory.js'
 import * as sendEmail from '../utils/sendEmailV2.js';
 
 const adminPayload = {
@@ -244,27 +245,7 @@ describe('Admin Routes', () => {
   // APPROVE RIDER
   // =====================
   describe('PATCH /admin/riders/:id/approve', () => {
-    
-      let newRiderId;
-      let approvedRiderId;
-      beforeEach(async () => {
-       
-          const newRider = await Rider.create(riderPayload);
-
-          const approvedRiderPayload = {
-            name: 'Paulo Entregador',
-            email: 'paulo@test.com',
-            password: '123456',
-            phone: '11999999999',
-            vehicle: { type: 'Moto' },
-            accountApprovedAt: new Date(),
-            documentImage: 'https://res.cloudinary.com/demo/image/upload/v1/delivroo/riders/rider_test.jpg'
-          };
-          const approvedRider = await Rider.create(approvedRiderPayload);
-          approvedRiderId = approvedRider._id;
-          newRiderId = newRider._id;
-         
-      });
+   
       it('deve retordar status 404 quando Rider não existir', async () => {
          const { token } = await createAdminWithToken();
          const fakeId = '64f1a2b3c4d5e6f7a8b9c0d1';
@@ -276,8 +257,9 @@ describe('Admin Routes', () => {
       });
       it('deve retordar status 400 e não aprovar o rider quando a imagem do documento não tiver sido enviada', async () => {
            const { token } = await createAdminWithToken();
+           const rider = await createRider({ documentImage: null });
            const res = await request(app)
-           .patch(`/api/admin/riders/${newRiderId}/approve`)
+           .patch(`/api/admin/riders/${rider._id}/approve`)
            .set('Authorization', `Bearer ${token}`);
 
            expect(res.status).toBe(400);
@@ -285,8 +267,9 @@ describe('Admin Routes', () => {
       });
       it('deve retordar status 400 quando o Rider já tenha sido aprovado anteriormente', async () => {
          const { token } = await createAdminWithToken();
+         const rider = await createRider({ accountApprovedAt: new Date(), documentImage: 'https://res.cloudinary.com/demo/image/upload/v1/delivroo/riders/rider_test.jpg' });
          const res = await request(app)
-         .patch(`/api/admin/riders/${approvedRiderId}/approve`)
+         .patch(`/api/admin/riders/${rider._id}/approve`)
          .set('Authorization', `Bearer ${token}`);
 
          expect(res.status).toBe(400);
@@ -295,9 +278,9 @@ describe('Admin Routes', () => {
       it('deve retordar status 200, enviar o email, e Rider data quando a conta for aprovada com sucesso', async () => {
          vi.spyOn(sendEmail, 'sendRiderAccountApprovedEmail').mockResolvedValue({});
          const { token } = await createAdminWithToken();
-         await Rider.findByIdAndUpdate(newRiderId, { documentImage: 'https://res.cloudinary.com/demo/image/upload/v1/delivroo/riders/rider_test.jpg' });
+         const rider = await createRider({ accountApprovedAt: null, documentImage: 'https://res.cloudinary.com/demo/image/upload/v1/delivroo/riders/rider_test.jpg' });
          const res = await request(app)
-         .patch(`/api/admin/riders/${newRiderId}/approve`)
+         .patch(`/api/admin/riders/${rider._id}/approve`)
          .set('Authorization', `Bearer ${token}`);
      
           expect(sendEmail.sendRiderAccountApprovedEmail).toHaveBeenCalledWith(
@@ -310,8 +293,9 @@ describe('Admin Routes', () => {
           expect(res.body.rider.password).toBeUndefined(); //
       });
      it('deve retornar status 401 quando não autenticado (sem token)', async () => {
+       const rider = await createRider({ accountApprovedAt: null, documentImage: 'https://res.cloudinary.com/demo/image/upload/v1/delivroo/riders/rider_test.jpg' });
         const res = await request(app)
-         .patch(`/api/admin/riders/${newRiderId}/approve`);
+         .patch(`/api/admin/riders/${rider._id}/approve`);
          expect(res.status).toBe(401);
      });
     
