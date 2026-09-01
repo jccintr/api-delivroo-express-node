@@ -61,8 +61,8 @@ export const login = async (req, res) => {
     const { email, password } = req.body;
 
     const store = await Store.findOne({ email }).select(
-      'name email phone password avatar doc active address emailVerifiedAt'
-    );
+      'name email phone password avatar doc active address emailVerifiedAt city'
+    ).populate('city', 'name state');
 
     if (!store) {
       return res.status(400).json({ error: 'Email ou senha inválidos.' });
@@ -103,8 +103,8 @@ export const validateToken = async (req, res) => {
     const storeId = req.user?.id || req.body.storeId;
 
     const store = await Store.findById(storeId).select(
-      'name email phone avatar doc active address emailVerifiedAt'
-    );
+      'name email phone avatar doc active address emailVerifiedAt city'
+    ).populate('city', 'name state');
 
     if (!store) {
       return res.status(404).json({ error: 'Loja não encontrada.' });
@@ -121,6 +121,8 @@ export const validateToken = async (req, res) => {
     return res.status(500).json({ error: 'Erro interno do servidor.' });
   }
 };
+
+
 
 export const verifyAccount = async (req,res) => {
 
