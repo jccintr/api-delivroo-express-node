@@ -22,6 +22,7 @@ router.patch('/me',AuthRider,updateProfileValidator,validate,RiderController.upd
 router.patch('/me/avatar', AuthRider,uploadMiddleware.single('avatar'),RiderController.uploadAvatar);
 router.patch('/me/document', AuthRider,uploadMiddleware.single('document'),RiderController.uploadDocument);
 router.patch('/me/status', AuthRider,RiderController.toggleOnlineStatus);
+router.patch('/me/status/offline', AuthRider,RiderController.setOfflineStatus);
 router.patch('/me/vehicle',AuthRider,updateVehicleValidator, validate,RiderController.updateVehicle);
 router.patch('/me/push-token', AuthRider, updatePushTokenValidator, validate, RiderController.updatePushToken);
 router.get('/deliveries/available', AuthRider, DeliveryController.listAvailableDeliveries);

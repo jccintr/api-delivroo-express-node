@@ -294,7 +294,6 @@ export const resetPassword = async (req, res) => {
   }
 };
 
-
 export const uploadAvatar = async (req, res) => {
   try {
     const riderId = req.user?.id;
@@ -404,6 +403,33 @@ export const toggleOnlineStatus = async (req, res) => {
     return res.status(200).json(rider);
   } catch (error) {
     console.error('Erro no toggleOnlineStatus:', error);
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};
+
+// Força online = false, de forma idempotente (ao contrário de
+// toggleOnlineStatus, nunca liga o rider). Chamado pelo app no logout, pra
+// garantir que quem deslogou pare de receber notificação de nova entrega —
+// diferente do toggle (usado no botão da Home), aqui não importa o estado
+// atual: o resultado final é sempre offline.
+export const setOfflineStatus = async (req, res) => {
+  try {
+    const riderId = req.user?.id;
+
+    const rider = await Rider.findById(riderId).select('online');
+
+    if (!rider) {
+      return res.status(404).json({ error: 'Rider não encontrado.' });
+    }
+
+    if (rider.online !== false) {
+      rider.online = false;
+      await rider.save();
+    }
+
+    return res.status(200).json({ online: false });
+  } catch (error) {
+    console.error('Erro no setOfflineStatus:', error);
     return res.status(500).json({ error: 'Erro interno do servidor.' });
   }
 };

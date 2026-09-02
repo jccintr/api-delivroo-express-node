@@ -932,4 +932,56 @@ describe('Rider Routes', () => {
        });
 
   });
+     // =====================
+  // Set Offline (PATCH /me/status/offline)
+  // =====================
+   describe('PATCH /api/riders/me/status/offline', () => {
+       it('deve retornar 401 quando não autenticado (sem token)', async () => {
+           const res = await request(app).patch('/api/riders/me/status/offline');
+           expect(res.status).toBe(401);
+           expect(res.body.error).toBe('Não autorizado');
+       });
+       it('deve retornar 404 quando rider não existir', async () => {
+        const { rider,token } = await createRiderWithToken();
+        await Rider.findByIdAndDelete(rider._id);
+        const res = await request(app)
+          .patch('/api/riders/me/status/offline')
+          .set('Authorization', `Bearer ${token}`);
+
+        expect(res.status).toBe(404);
+        expect(res.body.error).toBe('Rider não encontrado.');
+      });
+      it('deve colocar o rider offline quando estiver online', async () => {
+          const { rider,token } = await createRiderWithToken();
+          await Rider.findByIdAndUpdate(rider._id, { online: true });
+          const res = await request(app)
+            .patch('/api/riders/me/status/offline')
+            .set('Authorization', `Bearer ${token}`);
+          const updated = await Rider.findById(rider._id);
+
+          expect(res.status).toBe(200);
+          expect(res.body.online).toBe(false);
+          expect(updated.online).toBe(false);
+      });
+      it('é idempotente quando o rider já estiver offline', async () => {
+          const { rider,token } = await createRiderWithToken();
+          await Rider.findByIdAndUpdate(rider._id, { online: false });
+          const res = await request(app)
+            .patch('/api/riders/me/status/offline')
+            .set('Authorization', `Bearer ${token}`);
+
+          expect(res.status).toBe(200);
+          expect(res.body.online).toBe(false);
+      });
+      it('funciona mesmo com a conta desativada ou não verificada (best-effort no logout)', async () => {
+          const { rider,token } = await createRiderWithToken();
+          await Rider.findByIdAndUpdate(rider._id, { online: true, active: false, emailVerifiedAt: null });
+          const res = await request(app)
+            .patch('/api/riders/me/status/offline')
+            .set('Authorization', `Bearer ${token}`);
+
+          expect(res.status).toBe(200);
+          expect(res.body.online).toBe(false);
+      });
+   });
 });
