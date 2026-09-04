@@ -1,10 +1,12 @@
 import Delivery from '../../models/delivery.js';
+import Store from '../../models/store.js';
 import {createStore} from './store.factory.js';
 
 export async function createDelivery(overrides = {}) {
-   const store = await createStore();
+   const store = overrides.store ? await Store.findById(overrides.store) : await createStore();
    const delivery = await Delivery.create({
        "store": store._id,
+       "city": store.city,
        "destino": {
             "nome": "Maria Souza " + Date.now(),
             "telefone": "(35) 98765-4321",

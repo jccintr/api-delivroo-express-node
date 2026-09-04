@@ -85,10 +85,12 @@ export async function sendPushNotifications(messages) {
 
 // Notifica todos os riders online e elegíveis (mesmos critérios de
 // findEligibleRider em delivery.controller.js, mais online:true — só
-// quem está de fato disponível pra pegar entrega) sobre uma nova entrega.
-// `storeName` é passado à parte porque, no ponto em que isso é chamado
-// (logo após criar a entrega), `delivery.store` ainda é só o ObjectId —
-// não populado — e o controller já tem o nome da loja em mãos.
+// quem está de fato disponível pra pegar entrega) DA MESMA CIDADE DA LOJA
+// sobre uma nova entrega. `storeName` é passado à parte porque, no ponto em
+// que isso é chamado (logo após criar a entrega), `delivery.store` ainda é
+// só o ObjectId — não populado — e o controller já tem o nome da loja em
+// mãos. `delivery.city` já vem preenchido na criação (denormalizado da
+// Store — ver createDelivery), então não precisa de lookup extra aqui.
 export async function notifyNewDeliveryAvailable(delivery, storeName) {
   const riders = await Rider.find({
     online: true,
@@ -96,6 +98,7 @@ export async function notifyNewDeliveryAvailable(delivery, storeName) {
     emailVerifiedAt: { $ne: null },
     accountApprovedAt: { $ne: null },
     pushToken: { $ne: null },
+    city: delivery.city,
   }).select('pushToken');
 
   if (riders.length === 0) return;

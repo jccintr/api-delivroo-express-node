@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createRider } from './factories/rider.factory.js';
+import { createCity } from './factories/city.factory.js';
 import Rider from '../models/rider.js';
 import {
   sendPushNotifications,
@@ -118,19 +119,29 @@ describe('utils/pushNotifications', () => {
   });
 
   describe('notifyNewDeliveryAvailable', () => {
-    it('notifica só os riders online, ativos, verificados, aprovados e com pushToken', async () => {
+    it('notifica só os riders online, ativos, verificados, aprovados, com pushToken e da mesma cidade da loja', async () => {
+      const city = await createCity();
+
       await createRider({
         online: true,
         active: true,
         emailVerifiedAt: new Date(),
         accountApprovedAt: new Date(),
         pushToken: 'ExponentPushToken[eligible]',
+        city: city._id,
       });
-      await createRider({ online: false, pushToken: 'ExponentPushToken[offline]' }); // offline
-      await createRider({ online: true, active: false, pushToken: 'ExponentPushToken[inativo]' }); // desativado
-      await createRider({ online: true, active: true, pushToken: null }); // sem token
+      await createRider({ online: false, pushToken: 'ExponentPushToken[offline]', city: city._id }); // offline
+      await createRider({ online: true, active: false, pushToken: 'ExponentPushToken[inativo]', city: city._id }); // desativado
+      await createRider({ online: true, active: true, pushToken: null, city: city._id }); // sem token
+      await createRider({
+        online: true,
+        active: true,
+        emailVerifiedAt: new Date(),
+        accountApprovedAt: new Date(),
+        pushToken: 'ExponentPushToken[outracidade]',
+      }); // elegível em tudo, mas createRider() sem city explícita cria uma cidade própria — outra cidade
 
-      const delivery = { _id: { toString: () => 'delivery-1' }, riderPayout: 12.5, distancia: 3.2 };
+      const delivery = { _id: { toString: () => 'delivery-1' }, riderPayout: 12.5, distancia: 3.2, city: city._id };
 
       await notifyNewDeliveryAvailable(delivery, 'Loja Teste');
 
@@ -145,7 +156,7 @@ describe('utils/pushNotifications', () => {
 
     it('não chama fetch quando não há nenhum rider elegível', async () => {
       await notifyNewDeliveryAvailable(
-        { _id: { toString: () => 'd1' }, riderPayout: 10, distancia: 1 },
+        { _id: { toString: () => 'd1' }, riderPayout: 10, distancia: 1, city: (await createCity())._id },
         'Loja X',
       );
 

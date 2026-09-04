@@ -32,7 +32,7 @@ export const createDelivery = async (req, res) => {
     const storeId = req.user?.id;
     const { destino, package: pkg } = req.body;
 
-    const store = await Store.findById(storeId).select('name address emailVerifiedAt active');
+    const store = await Store.findById(storeId).select('name address emailVerifiedAt active city');
 
     if (!store) {
       return res.status(404).json({ error: 'Loja não encontrada.' });
@@ -70,6 +70,7 @@ export const createDelivery = async (req, res) => {
 
     const delivery = new Delivery({
       store: storeId,
+      city: store.city,
       rider: null,
       origem: {
         address: origemAddress,
@@ -117,7 +118,7 @@ export const createDelivery = async (req, res) => {
 // e-mail verificado, conta aprovada). Usado tanto em listAvailableDeliveries
 // quanto em getDelivery para não duplicar essa checagem em cada endpoint.
 async function findEligibleRider(riderId) {
-  const rider = await Rider.findById(riderId).select('name active emailVerifiedAt accountApprovedAt');
+  const rider = await Rider.findById(riderId).select('name active emailVerifiedAt accountApprovedAt city');
 
   if (!rider) {
     return { error: 'Entregador não encontrado.', status: 404 };
@@ -142,6 +143,8 @@ async function findEligibleRider(riderId) {
 // Lista entregas com status "disponível" (status: 0) e sem rider atribuído,
 // para o app do entregador exibir na tela principal. Inclui os dados da
 // loja (nome, telefone, avatar) para o rider saber quem está solicitando.
+// Restrito às entregas de lojas da MESMA cidade do rider — entregas de
+// outras cidades não entram nem nesta lista nem em getDelivery (ver abaixo).
 export const listAvailableDeliveries = async (req, res) => {
   try {
     const riderId = req.user?.id;
@@ -151,7 +154,7 @@ export const listAvailableDeliveries = async (req, res) => {
       return res.status(status).json({ error });
     }
 
-    const deliveries = await Delivery.find({ status: 0, rider: null })
+    const deliveries = await Delivery.find({ status: 0, rider: null, city: rider.city })
       .populate('store', 'name avatar address.district')
       .sort({ createdAt: -1 })
       .limit(50); // evita payload gigante se acumular muita entrega parada
@@ -196,8 +199,9 @@ export const listActiveDeliveries = async (req, res) => {
 //
 // Regra de visibilidade:
 // - status 0 e sem rider atribuído → entrega "disponível", qualquer rider
-//   elegível pode ver os detalhes (é o caso de pré-visualização, vindo da
-//   lista de disponíveis).
+//   elegível DA MESMA CIDADE DA LOJA pode ver os detalhes (é o caso de
+//   pré-visualização, vindo da lista de disponíveis). De outra cidade →
+//   tratada como inexistente (404), nunca 403 (não revela que existe).
 // - status > 0 (já aceita) → só o rider atribuído a ela pode ver. Depois
 //   que uma entrega é aceita, ela deixa de ser pública para os demais.
 export const getDelivery = async (req, res) => {
@@ -216,8 +220,15 @@ export const getDelivery = async (req, res) => {
       return res.status(404).json({ error: 'Entrega não encontrada.' });
     }
 
+    const isSameCity = rider.city && delivery.city && delivery.city.equals(rider.city);
     const isAvailable = delivery.status === 0 && delivery.rider == null;
     const isOwnDelivery = delivery.rider != null && delivery.rider.equals(riderId);
+
+    if (isAvailable && !isSameCity) {
+      // Disponível, mas de outra cidade: para o rider, ela simplesmente não
+      // existe — não é "sem permissão" (403), que revelaria a existência.
+      return res.status(404).json({ error: 'Entrega não encontrada.' });
+    }
 
     if (!isAvailable && !isOwnDelivery) {
       return res.status(403).json({ error: 'Você não tem permissão para ver esta entrega.' });
@@ -245,14 +256,20 @@ export const getDelivery = async (req, res) => {
 
 // ... (código existente sem mudanças até chegar em transitionAsRider) ...
 
-async function transitionAsRider({ riderId, deliveryId, filter, update, conflictMessage, notifyEvent }) {
+async function transitionAsRider({ riderId, deliveryId, filter, update, conflictMessage, notifyEvent, visibilityFilter }) {
   const { rider, error, status } = await findEligibleRider(riderId);
   if (!rider) {
     return { error, status };
   }
 
+  // `filter` pode ser um objeto fixo (maioria dos casos, onde a posse já é
+  // garantida por rider: riderId) ou uma função (rider) => filtro, usada
+  // quando a condição depende de dados do rider — hoje só o aceite precisa
+  // disso, para casar city: rider.city.
+  const resolvedFilter = typeof filter === 'function' ? filter(rider) : filter;
+
   const delivery = await Delivery.findOneAndUpdate(
-    { _id: deliveryId, ...filter },
+    { _id: deliveryId, ...resolvedFilter },
     update,
     { returnDocument: 'after' },
   ).populate('store', 'name avatar address.district');
@@ -263,7 +280,14 @@ async function transitionAsRider({ riderId, deliveryId, filter, update, conflict
     // esperado — precisamos diferenciar os dois pra dar o erro certo.
     // Essa checagem extra só roda no caminho de falha, então não reabre
     // a janela de corrida da transição em si (que já é atômica acima).
-    const exists = await Delivery.exists({ _id: deliveryId });
+    //
+    // `visibilityFilter` (opcional, mesma forma objeto/função de `filter`)
+    // define o que conta como "existe pra este rider" nessa checagem — no
+    // aceite, uma entrega de outra cidade deve aparecer como inexistente
+    // (404), não como conflito (409), mesmo que exista globalmente.
+    const resolvedVisibilityFilter =
+      typeof visibilityFilter === 'function' ? visibilityFilter(rider) : (visibilityFilter || {});
+    const exists = await Delivery.exists({ _id: deliveryId, ...resolvedVisibilityFilter });
     if (!exists) {
       return { error: 'Entrega não encontrada.', status: 404 };
     }
@@ -297,7 +321,10 @@ async function transitionAsRider({ riderId, deliveryId, filter, update, conflict
 // POST /riders/deliveries/:id/accept
 // status 0 (disponível) → 1 (aceita). Só funciona se ninguém tiver
 // aceitado entre o rider ver os detalhes e tocar em "Aceitar" — é isso que
-// o filtro { status: 0, rider: null } garante de forma atômica.
+// o filtro { status: 0, rider: null } garante de forma atômica. Também
+// exige city: rider.city — trava no servidor a mesma regra já aplicada na
+// listagem, então mesmo uma chamada direta à API (sem passar pela lista)
+// não consegue aceitar entrega de outra cidade.
 export const acceptDelivery = async (req, res) => {
   try {
     const riderId = req.user?.id;
@@ -306,7 +333,7 @@ export const acceptDelivery = async (req, res) => {
     const { delivery, error, status } = await transitionAsRider({
       riderId,
       deliveryId: id,
-      filter: { status: 0, rider: null },
+      filter: (rider) => ({ status: 0, rider: null, city: rider.city }),
       update: {
         status: 1,
         rider: riderId,
@@ -315,6 +342,9 @@ export const acceptDelivery = async (req, res) => {
       },
       conflictMessage: 'Esta entrega não está mais disponível.',
       notifyEvent: 'accepted',
+      // Sem isso, uma entrega de outra cidade cairia no "else" genérico e
+      // devolveria 409 (conflito) em vez de 404 — revelando que ela existe.
+      visibilityFilter: (rider) => ({ city: rider.city }),
     });
 
     if (!delivery) {
@@ -513,9 +543,8 @@ export const cancelDeliveryByRider = async (req, res) => {
 // Lista as entregas da loja autenticada que ainda estão em andamento
 // (status 0, 1, 2 ou 3 — solicitada, aceita, retirada ou a caminho), para
 // a loja acompanhar o que falta ser concluído. Entregas em estado final
-// (4 entregue, 5 devolvida, 6 cancelada) não aparecem aqui. Quando já
-// houver rider atribuído, seus dados básicos vêm populados para a loja
-// saber quem está com o pacote.
+// (entregue, devolvida, cancelada) não aparecem aqui — ver
+// listStoreDeliveryHistory para isso.
 export const listStoreActiveDeliveries = async (req, res) => {
   try {
     const storeId = req.user?.id;
@@ -545,19 +574,22 @@ export const listStoreActiveDeliveries = async (req, res) => {
   }
 };
 
-// Mapeia o filtro de status amigável da query string pro código numérico
-// persistido no banco (ver comentário de status em models/delivery.js).
+// Códigos de status por trás dos filtros de histórico (delivered/returned/cancelled)
 const HISTORY_STATUS_CODES = {
   delivered: 4,
   returned: 5,
   cancelled: 6,
 };
 
-// Núcleo compartilhado entre o histórico da loja e o do rider — a única
-// diferença entre os dois é por qual dono filtrar (store vs rider) e qual
-// lado popular na resposta (rider vs store, respectivamente). As checagens
-// de elegibilidade (conta ativa/verificada/aprovada) são específicas de
-// cada papel e ficam nos controllers que chamam esta função, antes de
+// Helper comum aos dois endpoints de histórico (loja e rider) — a única
+// diferença entre eles é por qual campo filtrar (store vs rider) e o que
+// popular (rider vs store) no resultado; toda a lógica de status/período/
+// paginação é idêntica, então fica centralizada aqui. As validações de
+// dono (loja ativa/verificada, rider elegível) continuam em cada endpoint
+// específico, chamadas antes desta função — aqui já assumimos que passou.
+//
+// IMPORTANTE: cada endpoint específico (listStoreDeliveryHistory,
+// listRiderDeliveryHistory) precisa ter sua própria validação ANTES de
 // chegar aqui. Centralizar isso evita duplicar — e voltar a ter que
 // corrigir duas vezes — a lógica de filtro por período/paginação (já
 // corrigimos bugs de fuso horário e de tipos aqui uma vez; não vale a pena

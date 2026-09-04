@@ -23,6 +23,16 @@ const deliverySchema = new mongoose.Schema({
         ref: "Store",
         required:true
  },
+ // Cidade da loja no momento da criação — denormalizada (assim como
+ // origem.address) para permitir filtrar entregas disponíveis por cidade
+ // do rider sem precisar de lookup na Store a cada consulta. Uma loja
+ // não muda de cidade depois do cadastro (ver PerfilLojaPage/updateProfile),
+ // então não há risco de isso ficar desatualizado.
+ city:{
+        type: mongoose.Types.ObjectId,
+        ref: "City",
+        required:true
+ },
  rider:{
         type: mongoose.Types.ObjectId,
         ref: "Rider",
@@ -79,6 +89,11 @@ riderPayout: {
 },
 
 }, { timestamps: true });
+
+// Índice para GET /riders/deliveries/available — filtra exatamente por
+// esses três campos (status:0, rider:null, city:<a do rider>) a cada
+// requisição da tela principal do app.
+deliverySchema.index({ status: 1, rider: 1, city: 1 });
 
 const Delivery = mongoose.model('Delivery', deliverySchema);
 export default Delivery;
