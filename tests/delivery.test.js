@@ -1352,7 +1352,7 @@ describe('delivery Routes', () => {
     it('deve cancelar com sucesso: status volta para 0 e rider volta para null (entrega reabre no pool)', async () => {
       const { token, rider } = await createRiderWithToken({ password: '123456' });
       await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
-      const delivery = await createDelivery({ status: 1, rider: rider._id, acceptedAt: new Date() });
+      const delivery = await createDelivery({ status: 1, rider: rider._id, acceptedAt: new Date(), city: rider.city });
 
       const res = await request(app).post(`/api/riders/deliveries/${delivery._id}/cancel`)
             .set('Authorization', `Bearer ${token}`)
