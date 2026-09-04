@@ -643,6 +643,93 @@ describe('delivery Routes', () => {
     
   });
     // =====================
+  // Rider Today Stats (mini-dashboard da Home)
+  // =====================
+  describe('GET /api/riders/deliveries/stats/today', () => {
+    it('deve retornar 401 quando não autenticado (sem token)', async () => {
+      const res = await request(app).get('/api/riders/deliveries/stats/today');
+
+      expect(res.status).toBe(401);
+      expect(res.body.error).toBe('Não autorizado');
+    });
+    it('deve retornar 403 quando a conta estiver desativada', async () => {
+        const { token, rider } = await createRiderWithToken({ password: '123456' });
+        await Rider.findByIdAndUpdate(rider._id, { active: false });
+
+        const res = await request(app)
+         .get('/api/riders/deliveries/stats/today')
+         .set('Authorization', `Bearer ${token}`);
+
+         expect(res.status).toBe(403);
+         expect(res.body.error).toBe('Conta desativada.');
+    });
+    it('deve retornar 404 quando a rider não existir', async () => {
+        const { token, rider } = await createRiderWithToken({ password: '123456' });
+        await Rider.findByIdAndDelete(rider._id);
+
+        const res = await request(app)
+         .get('/api/riders/deliveries/stats/today')
+         .set('Authorization', `Bearer ${token}`);
+
+         expect(res.status).toBe(404);
+         expect(res.body.error).toBe('Entregador não encontrado.');
+    });
+    it('deve retornar earnings 0 e deliveries 0 quando não houver nenhuma entrega concluída hoje', async () => {
+        const { token, rider } = await createRiderWithToken({ password: '123456' });
+        await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
+
+        const res = await request(app)
+            .get('/api/riders/deliveries/stats/today')
+            .set('Authorization', `Bearer ${token}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual({ earnings: 0, deliveries: 0 });
+    });
+    it('deve somar riderPayout e contar só as entregas concluídas (status 4) do próprio rider hoje', async () => {
+        const { token, rider } = await createRiderWithToken({ password: '123456' });
+        await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
+        const anotherRider = await createRider();
+
+        const now = new Date();
+        const d1 = await createDelivery({ rider: rider._id, status: 4, riderPayout: 10 });
+        const d2 = await createDelivery({ rider: rider._id, status: 4, riderPayout: 15.5 });
+        await Delivery.findByIdAndUpdate(d1._id, { deliveredAt: now });
+        await Delivery.findByIdAndUpdate(d2._id, { deliveredAt: now });
+
+        // não deve contar: ainda em andamento (não concluída)
+        const emAndamento = await createDelivery({ rider: rider._id, status: 2, riderPayout: 99 });
+        await Delivery.findByIdAndUpdate(emAndamento._id, { deliveredAt: null });
+
+        // não deve contar: concluída, mas de OUTRO rider
+        const deOutroRider = await createDelivery({ rider: anotherRider._id, status: 4, riderPayout: 50 });
+        await Delivery.findByIdAndUpdate(deOutroRider._id, { deliveredAt: now });
+
+        const res = await request(app)
+            .get('/api/riders/deliveries/stats/today')
+            .set('Authorization', `Bearer ${token}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.earnings).toBeCloseTo(25.5, 2);
+        expect(res.body.deliveries).toBe(2);
+    });
+    it('não deve contar entregas concluídas em dias anteriores (fora do dia civil de Brasília de hoje)', async () => {
+        const { token, rider } = await createRiderWithToken({ password: '123456' });
+        await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
+
+        const ontem = await createDelivery({ rider: rider._id, status: 4, riderPayout: 40 });
+        const ontemAsUtc = new Date();
+        ontemAsUtc.setUTCDate(ontemAsUtc.getUTCDate() - 1);
+        await Delivery.findByIdAndUpdate(ontem._id, { deliveredAt: ontemAsUtc });
+
+        const res = await request(app)
+            .get('/api/riders/deliveries/stats/today')
+            .set('Authorization', `Bearer ${token}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual({ earnings: 0, deliveries: 0 });
+    });
+  });
+    // =====================
   // Rider Get Active Deliveries
   // =====================
   describe('GET /api/riders/deliveries/active', () => {

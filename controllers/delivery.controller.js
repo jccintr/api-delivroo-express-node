@@ -3,6 +3,7 @@ import Delivery from '../models/delivery.js';
 import Rider from '../models/rider.js';
 import { distanceBetween } from '../utils/googleMaps.js';
 import { buildStoreAddressText } from '../utils/address.js';
+import { todayBrazilRange } from '../utils/brazilDate.js';
 import { notifyStore } from '../websocket.js';
 import { notifyNewDeliveryAvailable, notifyRiderDeliveryCancelled } from '../utils/pushNotifications.js';
 import { matchedData } from 'express-validator';
@@ -535,6 +536,55 @@ export const cancelDeliveryByRider = async (req, res) => {
       return res.status(404).json({ error: 'Entrega não encontrada.' });
     }
     console.error('Erro no cancelDeliveryByRider:', error);
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};
+
+// GET /riders/deliveries/stats/today
+// Resumo do dia para o mini-dashboard da Home do app: valor faturado (soma
+// de riderPayout) e quantidade de entregas concluídas HOJE — dia civil de
+// Brasília (00h-23h59 em America/Sao_Paulo), não UTC, mesmo critério já
+// usado no filtro de período do histórico (ver utils/brazilDate.js). Zera
+// à meia-noite de Brasília, não à meia-noite UTC.
+//
+// Só conta status 4 (entregue) — devolvida/cancelada não é faturamento.
+// Usa deliveredAt (não createdAt): o que importa pro "quanto ganhei hoje"
+// é quando a entrega foi CONCLUÍDA, não quando foi solicitada pela loja
+// (uma entrega aceita ontem à noite e entregue de madrugada conta hoje).
+export const getRiderTodayStats = async (req, res) => {
+  try {
+    const riderId = req.user?.id;
+
+    const { rider, error, status } = await findEligibleRider(riderId);
+    if (!rider) {
+      return res.status(status).json({ error });
+    }
+
+    const { start, end } = todayBrazilRange();
+
+    const [result] = await Delivery.aggregate([
+      {
+        $match: {
+          rider: rider._id,
+          status: 4,
+          deliveredAt: { $gte: start, $lte: end },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          earnings: { $sum: '$riderPayout' },
+          deliveries: { $sum: 1 },
+        },
+      },
+    ]);
+
+    return res.status(200).json({
+      earnings: result?.earnings ?? 0,
+      deliveries: result?.deliveries ?? 0,
+    });
+  } catch (error) {
+    console.error('Erro no getRiderTodayStats:', error);
     return res.status(500).json({ error: 'Erro interno do servidor.' });
   }
 };

@@ -1,4 +1,5 @@
 import { body, query  } from 'express-validator';
+import { toBrazilDayStart, toBrazilDayEnd } from '../utils/brazilDate.js';
 
 const PACKAGE_CATEGORIES = ['Comida', 'Documentos', 'Pacote', 'Medicamentos', 'Peças', 'Outros'];
 const PAYMENT_METHODS = ['Dinheiro', 'Cartão Crédito', 'Cartão Débito', 'Pago', 'Nada a Pagar'];
@@ -98,29 +99,13 @@ export const deliveryReasonValidator = [
 
 const HISTORY_STATUS_FILTERS = ['delivered', 'returned', 'cancelled'];
 
-// Brasil não observa horário de verão desde 2019 (Lei nº 13.972/2019), então
-// um offset fixo de -03:00 é seguro o ano inteiro — sem precisar de uma lib
-// de fusos horários pra isso.
-const BRAZIL_UTC_OFFSET = '-03:00';
-
 // Datas "soltas" (AAAA-MM-DD) no filtro de histórico são ancoradas no dia
 // civil de Brasília, não em UTC — sem isso, uma entrega criada à noite
 // (horário de Brasília) já vira "o dia seguinte" em UTC e fica fora do
 // filtro que a loja esperava ver. Se o chamador já mandar um ISO8601
 // completo com hora/offset própria, respeitamos exatamente como veio.
-function toBrazilDayStart(value) {
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return new Date(`${value}T00:00:00${BRAZIL_UTC_OFFSET}`);
-  }
-  return new Date(value);
-}
-
-function toBrazilDayEnd(value) {
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return new Date(`${value}T23:59:59.999${BRAZIL_UTC_OFFSET}`);
-  }
-  return new Date(value);
-}
+// (toBrazilDayStart/toBrazilDayEnd vivem em utils/brazilDate.js — também
+// usados pelo mini-dashboard de estatísticas do rider.)
 
 // GET /stores/deliveries/history — filtro por status (concluída/devolvida/
 // cancelada), período (createdAt) e paginação.
