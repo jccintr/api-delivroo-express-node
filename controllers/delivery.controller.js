@@ -3,7 +3,7 @@ import Delivery from '../models/delivery.js';
 import Rider from '../models/rider.js';
 import { distanceBetween } from '../utils/googleMaps.js';
 import { buildStoreAddressText } from '../utils/address.js';
-import { todayBrazilRange } from '../utils/brazilDate.js';
+import { todayBrazilRange, weekBrazilRange, monthBrazilRange } from '../utils/brazilDate.js';
 import { notifyStore } from '../websocket.js';
 import { notifyNewDeliveryAvailable, notifyRiderDeliveryCancelled } from '../utils/pushNotifications.js';
 import { matchedData } from 'express-validator';
@@ -540,18 +540,23 @@ export const cancelDeliveryByRider = async (req, res) => {
   }
 };
 
-// GET /riders/deliveries/stats/today
-// Resumo do dia para o mini-dashboard da Home do app: valor faturado (soma
-// de riderPayout) e quantidade de entregas concluídas HOJE — dia civil de
-// Brasília (00h-23h59 em America/Sao_Paulo), não UTC, mesmo critério já
-// usado no filtro de período do histórico (ver utils/brazilDate.js). Zera
-// à meia-noite de Brasília, não à meia-noite UTC.
+// GET /riders/deliveries/stats/summary
+// Resumo para a tela "Meus Ganhos" (e também para o mini-dashboard da
+// Home, que usa só o campo `today`): valor faturado (soma de riderPayout)
+// e quantidade de entregas concluídas em três períodos, numa única
+// requisição — Dia, Semana e Mês, todos ancorados no calendário civil de
+// Brasília (não UTC) e terminando "agora" (nunca no fim do período, já que
+// dias futuros não têm entrega mesmo). Semana começa na segunda-feira.
 //
 // Só conta status 4 (entregue) — devolvida/cancelada não é faturamento.
-// Usa deliveredAt (não createdAt): o que importa pro "quanto ganhei hoje"
-// é quando a entrega foi CONCLUÍDA, não quando foi solicitada pela loja
-// (uma entrega aceita ontem à noite e entregue de madrugada conta hoje).
-export const getRiderTodayStats = async (req, res) => {
+// Usa deliveredAt (não createdAt): o que importa é quando a entrega foi
+// CONCLUÍDA, não quando foi solicitada pela loja.
+//
+// Implementado como um único aggregate com $facet: a query base (rider +
+// status=4 + deliveredAt dentro do maior intervalo, o do mês, que sempre
+// contém os outros dois) roda uma vez só, e cada faceta refina com seu
+// próprio $match — mais barato que rodar 3 agregações/queries separadas.
+export const getRiderEarningsSummary = async (req, res) => {
   try {
     const riderId = req.user?.id;
 
@@ -560,31 +565,48 @@ export const getRiderTodayStats = async (req, res) => {
       return res.status(status).json({ error });
     }
 
-    const { start, end } = todayBrazilRange();
+    const now = new Date();
+    const today = todayBrazilRange(now);
+    const week = weekBrazilRange(now);
+    const month = monthBrazilRange(now);
 
     const [result] = await Delivery.aggregate([
       {
         $match: {
           rider: rider._id,
           status: 4,
-          deliveredAt: { $gte: start, $lte: end },
+          deliveredAt: { $gte: month.start, $lte: month.end },
         },
       },
       {
-        $group: {
-          _id: null,
-          earnings: { $sum: '$riderPayout' },
-          deliveries: { $sum: 1 },
+        $facet: {
+          today: [
+            { $match: { deliveredAt: { $gte: today.start, $lte: today.end } } },
+            { $group: { _id: null, earnings: { $sum: '$riderPayout' }, deliveries: { $sum: 1 } } },
+          ],
+          week: [
+            { $match: { deliveredAt: { $gte: week.start, $lte: week.end } } },
+            { $group: { _id: null, earnings: { $sum: '$riderPayout' }, deliveries: { $sum: 1 } } },
+          ],
+          month: [
+            { $group: { _id: null, earnings: { $sum: '$riderPayout' }, deliveries: { $sum: 1 } } },
+          ],
         },
       },
     ]);
 
+    const pick = (bucket) => ({
+      earnings: bucket?.[0]?.earnings ?? 0,
+      deliveries: bucket?.[0]?.deliveries ?? 0,
+    });
+
     return res.status(200).json({
-      earnings: result?.earnings ?? 0,
-      deliveries: result?.deliveries ?? 0,
+      today: pick(result?.today),
+      week: pick(result?.week),
+      month: pick(result?.month),
     });
   } catch (error) {
-    console.error('Erro no getRiderTodayStats:', error);
+    console.error('Erro no getRiderEarningsSummary:', error);
     return res.status(500).json({ error: 'Erro interno do servidor.' });
   }
 };

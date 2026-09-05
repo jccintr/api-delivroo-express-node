@@ -26,7 +26,7 @@ router.patch('/me/vehicle',AuthRider,updateVehicleValidator, validate,RiderContr
 router.patch('/me/push-token', AuthRider, updatePushTokenValidator, validate, RiderController.updatePushToken);
 router.get('/deliveries/available', AuthRider, DeliveryController.listAvailableDeliveries);
 router.get('/deliveries/active', AuthRider, DeliveryController.listActiveDeliveries);
-router.get('/deliveries/stats/today', AuthRider, DeliveryController.getRiderTodayStats);
+router.get('/deliveries/stats/summary', AuthRider, DeliveryController.getRiderEarningsSummary);
 router.get('/deliveries/history', AuthRider, historyQueryValidator, validate, DeliveryController.listRiderDeliveryHistory);
 router.get('/deliveries/:id', AuthRider, DeliveryController.getDelivery);
 router.post('/deliveries/:id/accept', AuthRider, DeliveryController.acceptDelivery);

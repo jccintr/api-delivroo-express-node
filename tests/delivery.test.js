@@ -643,11 +643,11 @@ describe('delivery Routes', () => {
     
   });
     // =====================
-  // Rider Today Stats (mini-dashboard da Home)
+  // Rider Earnings Summary (Home mini-dashboard + tela Meus Ganhos)
   // =====================
-  describe('GET /api/riders/deliveries/stats/today', () => {
+  describe('GET /api/riders/deliveries/stats/summary', () => {
     it('deve retornar 401 quando não autenticado (sem token)', async () => {
-      const res = await request(app).get('/api/riders/deliveries/stats/today');
+      const res = await request(app).get('/api/riders/deliveries/stats/summary');
 
       expect(res.status).toBe(401);
       expect(res.body.error).toBe('Não autorizado');
@@ -657,7 +657,7 @@ describe('delivery Routes', () => {
         await Rider.findByIdAndUpdate(rider._id, { active: false });
 
         const res = await request(app)
-         .get('/api/riders/deliveries/stats/today')
+         .get('/api/riders/deliveries/stats/summary')
          .set('Authorization', `Bearer ${token}`);
 
          expect(res.status).toBe(403);
@@ -668,24 +668,28 @@ describe('delivery Routes', () => {
         await Rider.findByIdAndDelete(rider._id);
 
         const res = await request(app)
-         .get('/api/riders/deliveries/stats/today')
+         .get('/api/riders/deliveries/stats/summary')
          .set('Authorization', `Bearer ${token}`);
 
          expect(res.status).toBe(404);
          expect(res.body.error).toBe('Entregador não encontrado.');
     });
-    it('deve retornar earnings 0 e deliveries 0 quando não houver nenhuma entrega concluída hoje', async () => {
+    it('deve retornar earnings 0 e deliveries 0 nos três períodos quando não houver nenhuma entrega concluída', async () => {
         const { token, rider } = await createRiderWithToken({ password: '123456' });
         await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
 
         const res = await request(app)
-            .get('/api/riders/deliveries/stats/today')
+            .get('/api/riders/deliveries/stats/summary')
             .set('Authorization', `Bearer ${token}`);
 
         expect(res.status).toBe(200);
-        expect(res.body).toEqual({ earnings: 0, deliveries: 0 });
+        expect(res.body).toEqual({
+          today: { earnings: 0, deliveries: 0 },
+          week: { earnings: 0, deliveries: 0 },
+          month: { earnings: 0, deliveries: 0 },
+        });
     });
-    it('deve somar riderPayout e contar só as entregas concluídas (status 4) do próprio rider hoje', async () => {
+    it('deve somar riderPayout e contar só as entregas concluídas (status 4) do próprio rider, em today/week/month', async () => {
         const { token, rider } = await createRiderWithToken({ password: '123456' });
         await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
         const anotherRider = await createRider();
@@ -705,28 +709,69 @@ describe('delivery Routes', () => {
         await Delivery.findByIdAndUpdate(deOutroRider._id, { deliveredAt: now });
 
         const res = await request(app)
-            .get('/api/riders/deliveries/stats/today')
+            .get('/api/riders/deliveries/stats/summary')
             .set('Authorization', `Bearer ${token}`);
 
         expect(res.status).toBe(200);
-        expect(res.body.earnings).toBeCloseTo(25.5, 2);
-        expect(res.body.deliveries).toBe(2);
+        // hoje conta nos três períodos simultaneamente (dia ⊆ semana ⊆ mês)
+        expect(res.body.today).toEqual({ earnings: 25.5, deliveries: 2 });
+        expect(res.body.week.earnings).toBeCloseTo(25.5, 2);
+        expect(res.body.week.deliveries).toBe(2);
+        expect(res.body.month.earnings).toBeCloseTo(25.5, 2);
+        expect(res.body.month.deliveries).toBe(2);
     });
-    it('não deve contar entregas concluídas em dias anteriores (fora do dia civil de Brasília de hoje)', async () => {
+    it('não deve contar, em nenhum período, entregas concluídas há mais de um mês', async () => {
         const { token, rider } = await createRiderWithToken({ password: '123456' });
         await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
 
-        const ontem = await createDelivery({ rider: rider._id, status: 4, riderPayout: 40 });
-        const ontemAsUtc = new Date();
-        ontemAsUtc.setUTCDate(ontemAsUtc.getUTCDate() - 1);
-        await Delivery.findByIdAndUpdate(ontem._id, { deliveredAt: ontemAsUtc });
+        const antigo = await createDelivery({ rider: rider._id, status: 4, riderPayout: 40 });
+        const antigoUtc = new Date();
+        antigoUtc.setUTCDate(antigoUtc.getUTCDate() - 45);
+        await Delivery.findByIdAndUpdate(antigo._id, { deliveredAt: antigoUtc });
 
         const res = await request(app)
-            .get('/api/riders/deliveries/stats/today')
+            .get('/api/riders/deliveries/stats/summary')
             .set('Authorization', `Bearer ${token}`);
 
         expect(res.status).toBe(200);
-        expect(res.body).toEqual({ earnings: 0, deliveries: 0 });
+        expect(res.body).toEqual({
+          today: { earnings: 0, deliveries: 0 },
+          week: { earnings: 0, deliveries: 0 },
+          month: { earnings: 0, deliveries: 0 },
+        });
+    });
+    it('uma entrega de ontem deve contar em week/month mas não em today (quando ontem cai na mesma semana civil)', async () => {
+        const { token, rider } = await createRiderWithToken({ password: '123456' });
+        await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
+
+        // Só roda a asserção de "mesma semana" quando o dia de hoje (em
+        // Brasília) não for segunda-feira — nesse caso "ontem" cairia na
+        // semana civil anterior, e o teste abaixo não se aplicaria. Ainda
+        // assim, a entrega de ontem sempre deve contar em month (a menos
+        // que hoje seja o dia 1º, tratado à parte).
+        const hojeStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+        const isMonday = new Date(`${hojeStr}T12:00:00-03:00`).getUTCDay() === 1;
+        const isFirstOfMonth = hojeStr.endsWith('-01');
+
+        const ontem = await createDelivery({ rider: rider._id, status: 4, riderPayout: 33 });
+        const ontemUtc = new Date();
+        ontemUtc.setUTCDate(ontemUtc.getUTCDate() - 1);
+        await Delivery.findByIdAndUpdate(ontem._id, { deliveredAt: ontemUtc });
+
+        const res = await request(app)
+            .get('/api/riders/deliveries/stats/summary')
+            .set('Authorization', `Bearer ${token}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.today).toEqual({ earnings: 0, deliveries: 0 });
+        if (!isFirstOfMonth) {
+          expect(res.body.month.earnings).toBeCloseTo(33, 2);
+          expect(res.body.month.deliveries).toBe(1);
+        }
+        if (!isMonday && !isFirstOfMonth) {
+          expect(res.body.week.earnings).toBeCloseTo(33, 2);
+          expect(res.body.week.deliveries).toBe(1);
+        }
     });
   });
     // =====================
