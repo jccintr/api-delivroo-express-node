@@ -3,7 +3,7 @@ import Delivery from '../models/delivery.js';
 import Rider from '../models/rider.js';
 import { distanceBetween } from '../utils/googleMaps.js';
 import { buildStoreAddressText } from '../utils/address.js';
-import { todayBrazilRange, weekBrazilRange, monthBrazilRange } from '../utils/brazilDate.js';
+import { todayBrazilRange, weekBrazilRange, monthBrazilRange, lastNDaysBrazilRange } from '../utils/brazilDate.js';
 import { notifyStore } from '../websocket.js';
 import { notifyNewDeliveryAvailable, notifyRiderDeliveryCancelled } from '../utils/pushNotifications.js';
 import { matchedData } from 'express-validator';
@@ -607,6 +607,236 @@ export const getRiderEarningsSummary = async (req, res) => {
     });
   } catch (error) {
     console.error('Erro no getRiderEarningsSummary:', error);
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};
+
+// GET /stores/deliveries/dashboard
+// Dados agregados para o dashboard da loja — sem nenhuma métrica de
+// faturamento/receita da loja (fora do escopo da plataforma). Tudo aqui é
+// sobre a OPERAÇÃO de entrega em si:
+//
+// - now: indicadores do momento atual (não são por período) —
+//   quantas entregas estão aguardando entregador e quantas em andamento
+//   agora mesmo.
+// - today/week/month: para cada período (dia civil de Brasília, semana
+//   começando segunda, mês civil — mesma convenção usada em
+//   getRiderEarningsSummary), conta quantas entregas foram solicitadas,
+//   quantas concluídas, quantas canceladas/devolvidas, tempo médio até o
+//   aceite e até a conclusão (em minutos), distância total percorrida e o
+//   total de repasse pago aos entregadores (custo operacional da loja —
+//   não é receita, mas ainda assim dinheiro que sai do caixa, por isso
+//   incluído a pedido).
+// - chart: série diária dos últimos 30 dias (rolante, não reinicia com o
+//   calendário) com solicitadas x concluídas, para visualizar tendência.
+// - topRiders: os 5 entregadores que mais concluíram entregas para esta
+//   loja no mês corrente.
+// - categoryBreakdown: quantas entregas por categoria de pacote no mês
+//   corrente.
+//
+// Implementado como um único aggregate com $facet — evita várias idas ao
+// banco para montar a tela toda de uma vez.
+function buildPeriodGroupStage() {
+  return {
+    $group: {
+      _id: null,
+      requested: { $sum: 1 },
+      completed: { $sum: { $cond: [{ $eq: ['$status', 4] }, 1, 0] } },
+      cancelledOrReturned: { $sum: { $cond: [{ $in: ['$status', [5, 6]] }, 1, 0] } },
+      totalDistance: { $sum: { $cond: [{ $eq: ['$status', 4] }, '$distancia', 0] } },
+      totalRiderPayout: { $sum: { $cond: [{ $eq: ['$status', 4] }, '$riderPayout', 0] } },
+      sumAcceptMinutes: {
+        $sum: {
+          $cond: [
+            { $ne: ['$acceptedAt', null] },
+            { $divide: [{ $subtract: ['$acceptedAt', '$createdAt'] }, 60000] },
+            0,
+          ],
+        },
+      },
+      countAccepted: { $sum: { $cond: [{ $ne: ['$acceptedAt', null] }, 1, 0] } },
+      sumDeliveryMinutes: {
+        $sum: {
+          $cond: [
+            { $and: [{ $ne: ['$deliveredAt', null] }, { $ne: ['$acceptedAt', null] }] },
+            { $divide: [{ $subtract: ['$deliveredAt', '$acceptedAt'] }, 60000] },
+            0,
+          ],
+        },
+      },
+      countDelivered: {
+        $sum: { $cond: [{ $and: [{ $ne: ['$deliveredAt', null] }, { $ne: ['$acceptedAt', null] }] }, 1, 0] },
+      },
+    },
+  };
+}
+
+// Converte o bucket bruto do $group acima no formato final da resposta,
+// já calculando as médias (que não dá pra fazer dentro do $group sem antes
+// somar tudo).
+function pickPeriodStats(bucket) {
+  const b = bucket?.[0];
+  if (!b) {
+    return {
+      requested: 0,
+      completed: 0,
+      cancelledOrReturned: 0,
+      totalDistance: 0,
+      totalRiderPayout: 0,
+      avgAcceptMinutes: null,
+      avgDeliveryMinutes: null,
+    };
+  }
+
+  return {
+    requested: b.requested,
+    completed: b.completed,
+    cancelledOrReturned: b.cancelledOrReturned,
+    totalDistance: Math.round(b.totalDistance * 10) / 10,
+    totalRiderPayout: Math.round(b.totalRiderPayout * 100) / 100,
+    avgAcceptMinutes: b.countAccepted > 0 ? Math.round((b.sumAcceptMinutes / b.countAccepted) * 10) / 10 : null,
+    avgDeliveryMinutes:
+      b.countDelivered > 0 ? Math.round((b.sumDeliveryMinutes / b.countDelivered) * 10) / 10 : null,
+  };
+}
+
+export const getStoreDashboardStats = async (req, res) => {
+  try {
+    const storeId = req.user?.id;
+
+    const store = await Store.findById(storeId).select('name active emailVerifiedAt');
+
+    if (!store) {
+      return res.status(404).json({ error: 'Loja não encontrada.' });
+    }
+
+    if (!store.active) {
+      return res.status(403).json({ error: 'Conta desativada.' });
+    }
+
+    if (!store.emailVerifiedAt) {
+      return res.status(403).json({ error: 'Conta ainda não verificada.' });
+    }
+
+    const now = new Date();
+    const today = todayBrazilRange(now);
+    const week = weekBrazilRange(now);
+    const month = monthBrazilRange(now);
+    const chartRange = lastNDaysBrazilRange(now, 30);
+
+    const [result] = await Delivery.aggregate([
+      { $match: { store: store._id } },
+      {
+        $facet: {
+          now: [
+            { $match: { status: { $in: [0, 1, 2, 3] } } },
+            {
+              $group: {
+                _id: null,
+                awaitingRider: { $sum: { $cond: [{ $eq: ['$status', 0] }, 1, 0] } },
+                inProgress: { $sum: { $cond: [{ $in: ['$status', [1, 2, 3]] }, 1, 0] } },
+              },
+            },
+          ],
+          today: [{ $match: { createdAt: { $gte: today.start, $lte: today.end } } }, buildPeriodGroupStage()],
+          week: [{ $match: { createdAt: { $gte: week.start, $lte: week.end } } }, buildPeriodGroupStage()],
+          month: [{ $match: { createdAt: { $gte: month.start, $lte: month.end } } }, buildPeriodGroupStage()],
+          chart: [
+            { $match: { createdAt: { $gte: chartRange.start, $lte: chartRange.end } } },
+            {
+              $group: {
+                _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt', timezone: 'America/Sao_Paulo' } },
+                requested: { $sum: 1 },
+                completed: { $sum: { $cond: [{ $eq: ['$status', 4] }, 1, 0] } },
+              },
+            },
+            { $sort: { _id: 1 } },
+          ],
+          topRiders: [
+            {
+              $match: {
+                createdAt: { $gte: month.start, $lte: month.end },
+                status: 4,
+                rider: { $ne: null },
+              },
+            },
+            { $group: { _id: '$rider', deliveries: { $sum: 1 } } },
+            { $sort: { deliveries: -1 } },
+            { $limit: 5 },
+            { $lookup: { from: 'riders', localField: '_id', foreignField: '_id', as: 'rider' } },
+            { $unwind: '$rider' },
+            {
+              $project: {
+                _id: 0,
+                riderId: '$rider._id',
+                name: '$rider.name',
+                avatar: '$rider.avatar',
+                deliveries: 1,
+              },
+            },
+          ],
+          categoryBreakdown: [
+            { $match: { createdAt: { $gte: month.start, $lte: month.end } } },
+            { $group: { _id: '$package.category', count: { $sum: 1 } } },
+            { $sort: { count: -1 } },
+            { $project: { _id: 0, category: '$_id', count: 1 } },
+          ],
+        },
+      },
+    ]);
+
+    return res.status(200).json({
+      now: {
+        awaitingRider: result?.now?.[0]?.awaitingRider ?? 0,
+        inProgress: result?.now?.[0]?.inProgress ?? 0,
+      },
+      today: pickPeriodStats(result?.today),
+      week: pickPeriodStats(result?.week),
+      month: pickPeriodStats(result?.month),
+      chart: result?.chart ?? [],
+      topRiders: result?.topRiders ?? [],
+      categoryBreakdown: result?.categoryBreakdown ?? [],
+    });
+  } catch (error) {
+    console.error('Erro no getStoreDashboardStats:', error);
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};
+
+// GET /stores/deliveries/recent
+// Últimas N entregas da loja autenticada, QUALQUER status (diferente de
+// listStoreActiveDeliveries, que só traz as em andamento, e
+// listStoreDeliveryHistory, que só traz as finalizadas) — é o feed de
+// "atividade recente" do dashboard, então precisa misturar os dois
+// mundos. Aceita ?limit= (padrão 10, máximo 50).
+export const listStoreRecentDeliveries = async (req, res) => {
+  try {
+    const storeId = req.user?.id;
+
+    const store = await Store.findById(storeId).select('name active emailVerifiedAt');
+
+    if (!store) {
+      return res.status(404).json({ error: 'Loja não encontrada.' });
+    }
+
+    if (!store.active) {
+      return res.status(403).json({ error: 'Conta desativada.' });
+    }
+
+    if (!store.emailVerifiedAt) {
+      return res.status(403).json({ error: 'Conta ainda não verificada.' });
+    }
+
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 10, 1), 50);
+
+    const deliveries = await Delivery.find({ store: storeId })
+      .populate('rider', 'name phone avatar vehicle rating')
+      .sort({ updatedAt: -1 })
+      .limit(limit);
+
+    return res.status(200).json(deliveries);
+  } catch (error) {
+    console.error('Erro no listStoreRecentDeliveries:', error);
     return res.status(500).json({ error: 'Erro interno do servidor.' });
   }
 };

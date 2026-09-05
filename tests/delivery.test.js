@@ -541,6 +541,356 @@ describe('delivery Routes', () => {
     });
   });
   // =====================
+  // Store Dashboard Stats
+  // =====================
+  describe('GET /api/stores/deliveries/dashboard', () => {
+    it('deve retornar 401 quando não autenticado (sem token)', async () => {
+      const res = await request(app).get('/api/stores/deliveries/dashboard');
+
+      expect(res.status).toBe(401);
+      expect(res.body.error).toBe('Não autorizado');
+    });
+    it('deve retornar 403 quando a conta estiver desativada', async () => {
+      const { token, store } = await createStoreWithToken({ password: '123456' });
+      await Store.findByIdAndUpdate(store._id, { active: false });
+
+      const res = await request(app)
+        .get('/api/stores/deliveries/dashboard')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(403);
+      expect(res.body.error).toBe('Conta desativada.');
+    });
+    it('deve retornar 403 quando a conta não estiver verificada', async () => {
+      const { token, store } = await createStoreWithToken({ password: '123456' });
+      await Store.findByIdAndUpdate(store._id, { emailVerifiedAt: null, active: true });
+
+      const res = await request(app)
+        .get('/api/stores/deliveries/dashboard')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(403);
+      expect(res.body.error).toBe('Conta ainda não verificada.');
+    });
+    it('deve retornar 404 quando a loja não existir', async () => {
+      const { token, store } = await createStoreWithToken({ password: '123456' });
+      await Store.findByIdAndDelete(store._id);
+
+      const res = await request(app)
+        .get('/api/stores/deliveries/dashboard')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe('Loja não encontrada.');
+    });
+    it('deve retornar tudo zerado/vazio quando a loja não tiver nenhuma entrega', async () => {
+      const { token, store } = await createStoreWithToken({ password: '123456' });
+      await Store.findByIdAndUpdate(store._id, { emailVerifiedAt: new Date(), active: true });
+
+      const res = await request(app)
+        .get('/api/stores/deliveries/dashboard')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.now).toEqual({ awaitingRider: 0, inProgress: 0 });
+      const emptyPeriod = {
+        requested: 0,
+        completed: 0,
+        cancelledOrReturned: 0,
+        totalDistance: 0,
+        totalRiderPayout: 0,
+        avgAcceptMinutes: null,
+        avgDeliveryMinutes: null,
+      };
+      expect(res.body.today).toEqual(emptyPeriod);
+      expect(res.body.week).toEqual(emptyPeriod);
+      expect(res.body.month).toEqual(emptyPeriod);
+      expect(res.body.chart).toEqual([]);
+      expect(res.body.topRiders).toEqual([]);
+      expect(res.body.categoryBreakdown).toEqual([]);
+    });
+    it('now: conta aguardando entregador e em andamento, só da própria loja e sem contar estados finais', async () => {
+      const { token, store } = await createStoreWithToken({ password: '123456' });
+      await Store.findByIdAndUpdate(store._id, { emailVerifiedAt: new Date(), active: true });
+      const rider = await createRider();
+
+      await createDelivery({ store: store._id, status: 0 });
+      await createDelivery({ store: store._id, status: 0 });
+      await createDelivery({ store: store._id, status: 1, rider: rider._id });
+      await createDelivery({ store: store._id, status: 3, rider: rider._id });
+      await createDelivery({ store: store._id, status: 4, rider: rider._id }); // final, não conta
+      await createDelivery({ store: store._id, status: 6 }); // final, não conta
+      await createDelivery({ status: 0 }); // outra loja, não conta
+
+      const res = await request(app)
+        .get('/api/stores/deliveries/dashboard')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.now).toEqual({ awaitingRider: 2, inProgress: 2 });
+    });
+    it('today: soma requested/completed/cancelledOrReturned/distância/repasse e calcula médias, só de hoje e da própria loja', async () => {
+      const { token, store } = await createStoreWithToken({ password: '123456' });
+      await Store.findByIdAndUpdate(store._id, { emailVerifiedAt: new Date(), active: true });
+      const rider = await createRider();
+      const now = new Date();
+
+      // Entrega concluída hoje: aceita 10 min depois de criada, entregue 30
+      // min depois de aceita.
+      const created1 = new Date(now.getTime());
+      const accepted1 = new Date(now.getTime() + 10 * 60000);
+      const delivered1 = new Date(now.getTime() + 40 * 60000);
+      const d1 = await createDelivery({
+        store: store._id,
+        status: 4,
+        rider: rider._id,
+        distancia: 5,
+        riderPayout: 12,
+      });
+      await Delivery.findByIdAndUpdate(d1._id, {
+        createdAt: created1,
+        acceptedAt: accepted1,
+        deliveredAt: delivered1,
+      }, { overwriteImmutable: true });
+
+      // Outra concluída hoje: aceita 20 min depois, entregue 20 min depois do aceite.
+      const created2 = new Date(now.getTime());
+      const accepted2 = new Date(now.getTime() + 20 * 60000);
+      const delivered2 = new Date(now.getTime() + 40 * 60000);
+      const d2 = await createDelivery({
+        store: store._id,
+        status: 4,
+        rider: rider._id,
+        distancia: 3,
+        riderPayout: 8,
+      });
+      await Delivery.findByIdAndUpdate(d2._id, {
+        createdAt: created2,
+        acceptedAt: accepted2,
+        deliveredAt: delivered2,
+      }, { overwriteImmutable: true });
+
+      // Cancelada hoje — conta em requested e cancelledOrReturned, mas não
+      // em completed/distância/repasse (só concluídas contam nesses).
+      const d3 = await createDelivery({ store: store._id, status: 6, distancia: 99, riderPayout: 99 });
+      await Delivery.findByIdAndUpdate(d3._id, { createdAt: now }, { overwriteImmutable: true });
+
+      // De ontem — não deve entrar em "today".
+      const ontem = new Date(now.getTime() - 25 * 60 * 60000);
+      const d4 = await createDelivery({ store: store._id, status: 4, riderPayout: 50 });
+      await Delivery.findByIdAndUpdate(
+        d4._id,
+        { createdAt: ontem, acceptedAt: ontem, deliveredAt: ontem },
+        { overwriteImmutable: true },
+      );
+
+      // De outra loja — não deve entrar.
+      const outraLoja = await createDelivery({ status: 4, riderPayout: 999 });
+      await Delivery.findByIdAndUpdate(
+        outraLoja._id,
+        { createdAt: now, acceptedAt: now, deliveredAt: now },
+        { overwriteImmutable: true },
+      );
+
+      const res = await request(app)
+        .get('/api/stores/deliveries/dashboard')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.today.requested).toBe(3);
+      expect(res.body.today.completed).toBe(2);
+      expect(res.body.today.cancelledOrReturned).toBe(1);
+      expect(res.body.today.totalDistance).toBeCloseTo(8, 1); // 5 + 3
+      expect(res.body.today.totalRiderPayout).toBeCloseTo(20, 2); // 12 + 8
+      expect(res.body.today.avgAcceptMinutes).toBeCloseTo(15, 1); // média de 10 e 20
+      expect(res.body.today.avgDeliveryMinutes).toBeCloseTo(25, 1); // média de 30 e 20
+    });
+    it('chart: agrupa por dia (fuso de Brasília) dentro da janela de 30 dias', async () => {
+      const { token, store } = await createStoreWithToken({ password: '123456' });
+      await Store.findByIdAndUpdate(store._id, { emailVerifiedAt: new Date(), active: true });
+
+      const hojeStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+
+      const d1 = await createDelivery({ store: store._id, status: 4 });
+      await Delivery.findByIdAndUpdate(
+        d1._id,
+        { createdAt: new Date(`${hojeStr}T12:00:00-03:00`) },
+        { overwriteImmutable: true },
+      );
+      const d2 = await createDelivery({ store: store._id, status: 0 });
+      await Delivery.findByIdAndUpdate(
+        d2._id,
+        { createdAt: new Date(`${hojeStr}T13:00:00-03:00`) },
+        { overwriteImmutable: true },
+      );
+
+      // fora da janela de 30 dias — não deve aparecer no gráfico
+      const antigo = await createDelivery({ store: store._id, status: 4 });
+      const dataAntiga = new Date();
+      dataAntiga.setUTCDate(dataAntiga.getUTCDate() - 40);
+      await Delivery.findByIdAndUpdate(antigo._id, { createdAt: dataAntiga }, { overwriteImmutable: true });
+
+      const res = await request(app)
+        .get('/api/stores/deliveries/dashboard')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      const todayBucket = res.body.chart.find((c) => c._id === hojeStr);
+      expect(todayBucket).toBeDefined();
+      expect(todayBucket.requested).toBe(2);
+      expect(todayBucket.completed).toBe(1);
+      // o registro de 40 dias atrás não deve gerar nenhum bucket
+      expect(res.body.chart.length).toBe(1);
+    });
+    it('topRiders: retorna os 5 que mais concluíram entregas no mês, ordenados, só da própria loja', async () => {
+      const { token, store } = await createStoreWithToken({ password: '123456' });
+      await Store.findByIdAndUpdate(store._id, { emailVerifiedAt: new Date(), active: true });
+      const riderTop = await createRider({ name: 'Rider Top' });
+      const riderSegundo = await createRider({ name: 'Rider Segundo' });
+      const now = new Date();
+
+      for (let i = 0; i < 3; i++) {
+        const d = await createDelivery({ store: store._id, status: 4, rider: riderTop._id });
+        await Delivery.findByIdAndUpdate(d._id, { createdAt: now }, { overwriteImmutable: true });
+      }
+      const d = await createDelivery({ store: store._id, status: 4, rider: riderSegundo._id });
+      await Delivery.findByIdAndUpdate(d._id, { createdAt: now }, { overwriteImmutable: true });
+
+      // não deve contar: mesmo rider, mas de OUTRA loja
+      const outraLojaDelivery = await createDelivery({ status: 4, rider: riderTop._id });
+      await Delivery.findByIdAndUpdate(outraLojaDelivery._id, { createdAt: now }, { overwriteImmutable: true });
+
+      const res = await request(app)
+        .get('/api/stores/deliveries/dashboard')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.topRiders[0]).toMatchObject({ name: 'Rider Top', deliveries: 3 });
+      expect(res.body.topRiders[1]).toMatchObject({ name: 'Rider Segundo', deliveries: 1 });
+    });
+    it('categoryBreakdown: conta por categoria de pacote no mês, só da própria loja', async () => {
+      const { token, store } = await createStoreWithToken({ password: '123456' });
+      await Store.findByIdAndUpdate(store._id, { emailVerifiedAt: new Date(), active: true });
+      const now = new Date();
+
+      const d1 = await createDelivery({ store: store._id, package: { description: 'x', category: 'Comida', quantity: 1 } });
+      await Delivery.findByIdAndUpdate(d1._id, { createdAt: now }, { overwriteImmutable: true });
+      const d2 = await createDelivery({ store: store._id, package: { description: 'y', category: 'Documentos', quantity: 1 } });
+      await Delivery.findByIdAndUpdate(d2._id, { createdAt: now }, { overwriteImmutable: true });
+      const d3 = await createDelivery({ store: store._id, package: { description: 'z', category: 'Comida', quantity: 1 } });
+      await Delivery.findByIdAndUpdate(d3._id, { createdAt: now }, { overwriteImmutable: true });
+
+      const res = await request(app)
+        .get('/api/stores/deliveries/dashboard')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      const comida = res.body.categoryBreakdown.find((c) => c.category === 'Comida');
+      const documentos = res.body.categoryBreakdown.find((c) => c.category === 'Documentos');
+      expect(comida.count).toBe(2);
+      expect(documentos.count).toBe(1);
+    });
+  });
+  // =====================
+  // Store Recent Deliveries
+  // =====================
+  describe('GET /api/stores/deliveries/recent', () => {
+    it('deve retornar 401 quando não autenticado (sem token)', async () => {
+      const res = await request(app).get('/api/stores/deliveries/recent');
+
+      expect(res.status).toBe(401);
+      expect(res.body.error).toBe('Não autorizado');
+    });
+    it('deve retornar 403 quando a conta estiver desativada', async () => {
+      const { token, store } = await createStoreWithToken({ password: '123456' });
+      await Store.findByIdAndUpdate(store._id, { active: false });
+
+      const res = await request(app)
+        .get('/api/stores/deliveries/recent')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(403);
+      expect(res.body.error).toBe('Conta desativada.');
+    });
+    it('deve retornar 404 quando a loja não existir', async () => {
+      const { token, store } = await createStoreWithToken({ password: '123456' });
+      await Store.findByIdAndDelete(store._id);
+
+      const res = await request(app)
+        .get('/api/stores/deliveries/recent')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe('Loja não encontrada.');
+    });
+    it('deve trazer entregas de qualquer status, só da própria loja, com o rider populado quando houver', async () => {
+      const { token, store } = await createStoreWithToken({ password: '123456' });
+      await Store.findByIdAndUpdate(store._id, { emailVerifiedAt: new Date(), active: true });
+      const rider = await createRider();
+
+      const requested = await createDelivery({ store: store._id, status: 0 });
+      const delivered = await createDelivery({ store: store._id, status: 4, rider: rider._id });
+      await createDelivery(); // outra loja, não deve aparecer
+
+      const res = await request(app)
+        .get('/api/stores/deliveries/recent')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.length).toBe(2);
+      const ids = res.body.map((d) => d._id);
+      expect(ids).toEqual(expect.arrayContaining([requested._id.toString(), delivered._id.toString()]));
+      const withRider = res.body.find((d) => d._id === delivered._id.toString());
+      expect(withRider.rider).toHaveProperty('name');
+    });
+    it('deve respeitar o limit da query, com padrão 10 e teto 50', async () => {
+      const { token, store } = await createStoreWithToken({ password: '123456' });
+      await Store.findByIdAndUpdate(store._id, { emailVerifiedAt: new Date(), active: true });
+
+      for (let i = 0; i < 12; i++) {
+        await createDelivery({ store: store._id, status: 0 });
+      }
+
+      const resDefault = await request(app)
+        .get('/api/stores/deliveries/recent')
+        .set('Authorization', `Bearer ${token}`);
+      expect(resDefault.body.length).toBe(10);
+
+      const resLimit3 = await request(app)
+        .get('/api/stores/deliveries/recent?limit=3')
+        .set('Authorization', `Bearer ${token}`);
+      expect(resLimit3.body.length).toBe(3);
+
+      const resLimit999 = await request(app)
+        .get('/api/stores/deliveries/recent?limit=999')
+        .set('Authorization', `Bearer ${token}`);
+      expect(resLimit999.body.length).toBe(12); // teto de 50, mas só existem 12
+    });
+    it('deve ordenar da mais recente para a mais antiga (por updatedAt)', async () => {
+      const { token, store } = await createStoreWithToken({ password: '123456' });
+      await Store.findByIdAndUpdate(store._id, { emailVerifiedAt: new Date(), active: true });
+
+      const antiga = await createDelivery({ store: store._id, status: 0 });
+      // { timestamps: false }: sem isso, o findByIdAndUpdate sobrescreveria
+      // updatedAt com o horário real da chamada (comportamento padrão do
+      // schema timestamps:true) — aqui queremos controlar o valor de propósito.
+      await Delivery.findByIdAndUpdate(
+        antiga._id,
+        { updatedAt: new Date(Date.now() - 60 * 60000) },
+        { timestamps: false },
+      );
+      const recente = await createDelivery({ store: store._id, status: 0 });
+      await Delivery.findByIdAndUpdate(recente._id, { updatedAt: new Date() }, { timestamps: false });
+
+      const res = await request(app)
+        .get('/api/stores/deliveries/recent')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.body[0]._id).toBe(recente._id.toString());
+      expect(res.body[1]._id).toBe(antiga._id.toString());
+    });
+  });
+  // =====================
   // List Available Deliveries
   // =====================
   describe('GET /api/riders/deliveries/available', () => {

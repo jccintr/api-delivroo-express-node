@@ -73,3 +73,21 @@ export function monthBrazilRange(now = new Date()) {
     end: toBrazilDayEnd(todayStr),
   };
 }
+
+// Início e fim de uma janela "últimos N dias" (inclusive hoje), ancorada no
+// calendário civil de Brasília. Usado pelo gráfico de tendência do dashboard
+// da loja — diferente de weekBrazilRange/monthBrazilRange, essa janela é
+// sempre "rolante" (não reinicia no domingo/dia 1), então o gráfico sempre
+// mostra a mesma quantidade de pontos, não importa em que dia do mês esteja.
+export function lastNDaysBrazilRange(now = new Date(), days = 30) {
+  const todayStr = now.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+  const [year, month, day] = todayStr.split('-').map(Number);
+  const pureDate = new Date(Date.UTC(year, month - 1, day));
+  pureDate.setUTCDate(pureDate.getUTCDate() - (days - 1));
+  const startStr = pureDate.toISOString().slice(0, 10);
+
+  return {
+    start: toBrazilDayStart(startStr),
+    end: toBrazilDayEnd(todayStr),
+  };
+}

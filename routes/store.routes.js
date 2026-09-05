@@ -28,6 +28,8 @@ router.post('/password/request',StoreController.requestPasswordCode);
 router.post('/password/verify-code',StoreController.verifyPasswordCode);
 router.post('/password/reset',resetPasswordValidator, validate, StoreController.resetPassword);
 router.post('/deliveries', AuthStore, createDeliveryValidator, validate, DeliveryController.createDelivery);
+router.get('/deliveries/dashboard', AuthStore, DeliveryController.getStoreDashboardStats);
+router.get('/deliveries/recent', AuthStore, DeliveryController.listStoreRecentDeliveries);
 router.get('/deliveries/active', AuthStore, DeliveryController.listStoreActiveDeliveries);
 router.get('/deliveries/history', AuthStore, historyQueryValidator, validate, DeliveryController.listStoreDeliveryHistory);
 router.post('/deliveries/:id/cancel', AuthStore, deliveryReasonValidator, validate, DeliveryController.cancelDeliveryByStore);
