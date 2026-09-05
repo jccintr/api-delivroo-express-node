@@ -42,7 +42,24 @@ export function notifyStore(storeId, event) {
 // Conexão autenticada por token de loja, passado via query string:
 // ws(s)://<host>?token=<JWT_STORE>
 // (mesmo token retornado no login REST da loja, POST /stores/login).
-const websocket = (server) => {
+//
+// Heartbeat (ping/pong): sem isso, uma conexão pode "morrer" silenciosamente
+// — o proxy de borda do Render (ou de qualquer plataforma cloud) derruba
+// conexões WebSocket ociosas depois de um tempo sem tráfego, mas o processo
+// Node não fica sabendo: o socket, do lado daqui, continua com
+// readyState === OPEN indefinidamente. notifyStore() então "envia" pra esse
+// socket zumbi sem erro nenhum, e a loja nunca recebe o evento.
+//
+// O ping/pong resolve os dois lados do problema ao mesmo tempo: (1) o
+// tráfego periódico do ping mantém o proxy enxergando a conexão como ativa,
+// evitando o timeout por ociosidade; e (2) se o cliente não responder com
+// pong dentro do próprio intervalo (sinal de que a conexão já está morta,
+// mesmo que o Node ainda não tenha percebido), o servidor derruba
+// (`terminate()`) e libera o socket — o que também já dispara o 'close'
+// existente, removendo a loja de storeSockets.
+const HEARTBEAT_INTERVAL_MS = Number(process.env.WS_HEARTBEAT_INTERVAL_MS) || 30000;
+
+const websocket = (server, { heartbeatIntervalMs = HEARTBEAT_INTERVAL_MS } = {}) => {
   const wss = new WebSocketServer({ server });
 
   wss.on('connection', (ws, req) => {
@@ -64,6 +81,11 @@ const websocket = (server) => {
     }
 
     ws.storeId = storeId;
+    ws.isAlive = true;
+    ws.on('pong', () => {
+      ws.isAlive = true;
+    });
+
     registerStoreSocket(storeId, ws);
 
     ws.on('close', () => {
@@ -74,6 +96,28 @@ const websocket = (server) => {
       unregisterStoreSocket(storeId, ws);
     });
   });
+
+  const heartbeat = setInterval(() => {
+    wss.clients.forEach((ws) => {
+      if (ws.isAlive === false) {
+        // Não respondeu ao ping do ciclo anterior — considera morta.
+        // terminate() (não close()) força o encerramento imediato da
+        // conexão TCP subjacente, sem esperar um handshake que uma conexão
+        // já zumbi nunca vai completar; isso também dispara o 'close'
+        // acima, cuidando de tirar a loja de storeSockets.
+        return ws.terminate();
+      }
+
+      ws.isAlive = false;
+      ws.ping();
+    });
+  }, heartbeatIntervalMs);
+
+  // Amarrado ao close do HTTP server (não ao de wss, que não se fecha
+  // sozinho quando o server fecha) — assim o heartbeat não fica rodando
+  // indefinidamente depois que o servidor para (relevante sobretudo nos
+  // testes, que sobem/derrubam um server por describe/it).
+  server.on('close', () => clearInterval(heartbeat));
 
   return wss;
 };

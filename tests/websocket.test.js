@@ -4,11 +4,11 @@ import WebSocket from 'ws';
 import jsonwebtoken from 'jsonwebtoken';
 import websocket, { notifyStore } from '../websocket.js';
 
-function startServer() {
+function startServer(options) {
   return new Promise((resolve) => {
     const server = http.createServer();
-    websocket(server);
-    server.listen(0, () => resolve(server));
+    const wss = websocket(server, options);
+    server.listen(0, () => resolve({ server, wss }));
   });
 }
 
@@ -37,16 +37,19 @@ function waitForClose(ws) {
 
 describe('websocket — notificação em tempo real da loja', () => {
   let server;
+  let wss;
   let clients = [];
 
   afterEach(async () => {
     clients.forEach((c) => c.readyState === WebSocket.OPEN && c.close());
     clients = [];
     await new Promise((resolve) => server?.close(resolve));
+    server = undefined;
+    wss = undefined;
   });
 
   it('aceita a conexão com um token de loja válido', async () => {
-    server = await startServer();
+    ({ server, wss } = await startServer());
     const token = jsonwebtoken.sign({ storeId: 'store-1' }, process.env.JWT_SECRET_STORE);
 
     const ws = new WebSocket(wsUrl(server, token));
@@ -56,7 +59,7 @@ describe('websocket — notificação em tempo real da loja', () => {
   });
 
   it('fecha a conexão quando não há token', async () => {
-    server = await startServer();
+    ({ server, wss } = await startServer());
     const ws = new WebSocket(wsUrl(server));
     clients.push(ws);
 
@@ -65,7 +68,7 @@ describe('websocket — notificação em tempo real da loja', () => {
   });
 
   it('fecha a conexão quando o token é inválido', async () => {
-    server = await startServer();
+    ({ server, wss } = await startServer());
     const ws = new WebSocket(wsUrl(server, 'token-invalido'));
     clients.push(ws);
 
@@ -74,7 +77,7 @@ describe('websocket — notificação em tempo real da loja', () => {
   });
 
   it('notifyStore entrega o evento só para as conexões da loja correta', async () => {
-    server = await startServer();
+    ({ server, wss } = await startServer());
     const tokenA = jsonwebtoken.sign({ storeId: 'store-a' }, process.env.JWT_SECRET_STORE);
     const tokenB = jsonwebtoken.sign({ storeId: 'store-b' }, process.env.JWT_SECRET_STORE);
 
@@ -107,7 +110,7 @@ describe('websocket — notificação em tempo real da loja', () => {
   });
 
   it('múltiplas abas/conexões da mesma loja recebem o mesmo evento', async () => {
-    server = await startServer();
+    ({ server, wss } = await startServer());
     const token = jsonwebtoken.sign({ storeId: 'store-multi' }, process.env.JWT_SECRET_STORE);
 
     const wsTab1 = new WebSocket(wsUrl(server, token));
@@ -127,7 +130,7 @@ describe('websocket — notificação em tempo real da loja', () => {
   });
 
   it('para de notificar uma conexão depois que ela fecha', async () => {
-    server = await startServer();
+    ({ server, wss } = await startServer());
     const token = jsonwebtoken.sign({ storeId: 'store-close' }, process.env.JWT_SECRET_STORE);
 
     const ws = new WebSocket(wsUrl(server, token));
@@ -143,5 +146,67 @@ describe('websocket — notificação em tempo real da loja', () => {
     expect(() =>
       notifyStore('store-close', { type: 'delivery:updated', event: 'delivered', delivery: {} }),
     ).not.toThrow();
+  });
+
+  // =====================
+  // Heartbeat (ping/pong)
+  // =====================
+  describe('heartbeat', () => {
+    it('mantém uma conexão saudável aberta através de vários ciclos de heartbeat (responde ping com pong automaticamente)', async () => {
+      ({ server, wss } = await startServer({ heartbeatIntervalMs: 30 }));
+      const token = jsonwebtoken.sign({ storeId: 'store-saudavel' }, process.env.JWT_SECRET_STORE);
+
+      const ws = new WebSocket(wsUrl(server, token));
+      clients.push(ws);
+      await waitForOpen(ws);
+
+      // 3 ciclos de heartbeat — o cliente ws responde a ping com pong
+      // automaticamente (comportamento nativo do protocolo, embutido na
+      // lib em ambos os lados), então a conexão deve permanecer aberta.
+      await new Promise((resolve) => setTimeout(resolve, 30 * 3 + 20));
+
+      expect(ws.readyState).toBe(WebSocket.OPEN);
+
+      // e continua recebendo eventos normalmente depois disso
+      const message = waitForMessage(ws);
+      notifyStore('store-saudavel', { type: 'delivery:updated', event: 'accepted', delivery: { _id: 'd3' } });
+      await expect(message).resolves.toEqual({
+        type: 'delivery:updated',
+        event: 'accepted',
+        delivery: { _id: 'd3' },
+      });
+    });
+
+    it('derruba (terminate) uma conexão zumbi que não respondeu ao ping do ciclo anterior', async () => {
+      ({ server, wss } = await startServer({ heartbeatIntervalMs: 30 }));
+      const token = jsonwebtoken.sign({ storeId: 'store-zumbi' }, process.env.JWT_SECRET_STORE);
+
+      const ws = new WebSocket(wsUrl(server, token));
+      clients.push(ws);
+      await waitForOpen(ws);
+
+      // Simula uma conexão que já está morta do ponto de vista da rede,
+      // mas que o processo Node ainda não descobriu (readyState continua
+      // OPEN) — exatamente o cenário de um proxy derrubando a conexão
+      // silenciosamente. Força isAlive=false direto no socket do lado do
+      // servidor, como se o ciclo de ping anterior não tivesse recebido
+      // pong nenhum.
+      const serverSideSocket = [...wss.clients][0];
+      serverSideSocket.isAlive = false;
+
+      // No próximo tick do heartbeat, essa conexão deve ser terminada.
+      const closeCode = await waitForClose(ws);
+      expect(closeCode).toBeDefined();
+
+      // E, uma vez removida, notifyStore não deve mais achar ninguém pra
+      // essa loja (ela já foi tirada de storeSockets via 'close').
+      let received = false;
+      ws.on('message', () => {
+        received = true;
+      });
+      notifyStore('store-zumbi', { type: 'delivery:updated', event: 'delivered', delivery: {} });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(received).toBe(false);
+    });
   });
 });
