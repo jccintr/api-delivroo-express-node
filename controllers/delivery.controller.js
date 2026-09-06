@@ -13,11 +13,25 @@ import { matchedData } from 'express-validator';
 // pacote, demanda/hora, taxa mínima etc.) quando essa regra de negócio for
 // definida. Por enquanto gera um valor aleatório só para termos o dado
 // preenchido e podermos avançar no front do rider.
-function calculateRiderPayout() {
-  const MIN_PAYOUT = 6;
-  const MAX_PAYOUT = 25;
-  const value = MIN_PAYOUT + Math.random() * (MAX_PAYOUT - MIN_PAYOUT);
-  return Math.round(value * 100) / 100;
+function calculateRiderPayout(km) {
+ const BASE = 8.55;
+  const PRECO_KM = 1.6;
+  const MINIMO = 8;
+  const LIMITE_LINEAR = 15;
+  const EXTRA_REAIS = 2;
+  const EXTRA_A_CADA_KM = 3;
+
+  if (km == null || km < 0) return MINIMO;
+
+  let taxa = BASE + PRECO_KM * km;
+
+  if (km > LIMITE_LINEAR) {
+    const kmExcedentes = km - LIMITE_LINEAR;
+    const blocos = Math.ceil(kmExcedentes / EXTRA_A_CADA_KM);
+    taxa += blocos * EXTRA_REAIS;
+  }
+
+  return Math.max(MINIMO, Math.round(taxa));
 }
 
 // POST /stores/deliveries
@@ -87,7 +101,7 @@ export const createDelivery = async (req, res) => {
       },
       // distancia é armazenada em quilômetros, com 2 casas decimais
       distancia: Math.round((distanceInfo.meters / 1000) * 100) / 100,
-      riderPayout: calculateRiderPayout(),
+      riderPayout: calculateRiderPayout(Math.round((distanceInfo.meters / 1000) * 100) / 100),
       package: {
         description: pkg.description,
         category: pkg.category,
