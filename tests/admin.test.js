@@ -889,8 +889,14 @@ describe('Admin Routes', () => {
 
     it('deve listar entregas de QUALQUER loja (monitor da plataforma inteira)', async () => {
       const { token } = await createAdminWithToken({ password: '123456' });
-      await createDelivery();
-      await createDelivery();
+      const rider = await createRider();
+      // origem não é required no schema e a factory não seta por padrão
+      // (só o createDelivery de verdade, no controller, sempre preenche a
+      // partir do endereço da loja) — passamos explícito aqui pra simular
+      // o formato real de uma entrega criada pelo fluxo normal.
+      const origem = { address: 'Av. Central, 100 - Centro', latitude: -22.4739, longitude: -45.6097 };
+      await createDelivery({ rider: rider._id, origem });
+      await createDelivery({ origem });
 
       const res = await request(app)
         .get('/api/admin/deliveries')
@@ -898,7 +904,21 @@ describe('Admin Routes', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.data).toHaveLength(2);
+      // O admin precisa de acesso total — dados de contato da loja e do
+      // entregador vêm populados, não só o nome (ver getStore/getRider
+      // pra revisão completa de cada conta separadamente).
       expect(res.body.data[0].store).toHaveProperty('name');
+      expect(res.body.data[0].store).toHaveProperty('phone');
+      expect(res.body.data[0].store).toHaveProperty('email');
+      const comRider = res.body.data.find((d) => d.rider);
+      expect(comRider.rider).toHaveProperty('phone');
+      expect(comRider.rider).toHaveProperty('email');
+      // endereço e eventos já vêm sempre, direto do próprio documento
+      // (nunca foram cortados pelo endpoint — o gap era só no front)
+      expect(res.body.data[0]).toHaveProperty('origem');
+      expect(res.body.data[0]).toHaveProperty('destino');
+      expect(res.body.data[0]).toHaveProperty('events');
+      expect(res.body.data[0]).toHaveProperty('package');
     });
 
     it('deve filtrar por status', async () => {

@@ -456,8 +456,8 @@ export const listDeliveries = async (req, res) => {
     const skip = (page - 1) * limit;
     const [deliveries, total] = await Promise.all([
       Delivery.find(filter)
-        .populate('store', 'name avatar')
-        .populate('rider', 'name phone avatar vehicle rating')
+        .populate('store', 'name avatar phone email')
+        .populate('rider', 'name phone email avatar vehicle rating')
         .populate('city', 'name state')
         .sort({ createdAt: -1 })
         .skip(skip)
