@@ -4,9 +4,12 @@ import app from '../app.js';
 import Rider from '../models/rider.js';
 import Store from '../models/store.js';
 import City from '../models/city.js';
-import {createAdmin,createAdminWithToken,createStore} from './factories/admin.factory.js'
+import Delivery from '../models/delivery.js';
+import {createAdmin,createAdminWithToken} from './factories/admin.factory.js'
 import {createStore} from './factories/store.factory.js'
 import {createRider} from './factories/rider.factory.js'
+import {createDelivery} from './factories/delivery.factory.js'
+import {createCity} from './factories/city.factory.js'
 import * as sendEmail from '../utils/sendEmailV2.js';
 
 const adminPayload = {
@@ -548,5 +551,448 @@ describe('Admin Routes', () => {
     });
 
     
+  });
+
+  // =====================
+  // DASHBOARD
+  // =====================
+  describe('GET /api/admin/dashboard', () => {
+    it('deve retornar 401 quando não autenticado (sem token)', async () => {
+      const res = await request(app).get('/api/admin/dashboard');
+      expect(res.status).toBe(401);
+    });
+
+    it('deve retornar as contagens corretas de riders, stores e entregas de hoje', async () => {
+      const { token } = await createAdminWithToken({ password: '123456' });
+
+      // riders: 1 pendente, 1 ativo aprovado, 1 inativo
+     await createRider({ accountApprovedAt: null });
+     await createRider({ accountApprovedAt: new Date(), active: true });
+     await createRider({ accountApprovedAt: new Date(), active: false });
+
+      // stores: 1 ativa, 1 inativa
+      await createStore({ active: true });
+      await createStore({ active: false });
+
+      // entregas de hoje: 1 concluída, 1 cancelada, 1 solicitada (status 0)
+      const store = await createStore();
+      const now = new Date();
+      const d1 = await createDelivery({ store: store._id, status: 4 });
+      await Delivery.findByIdAndUpdate(d1._id, { createdAt: now }, { overwriteImmutable: true });
+      const d2 = await createDelivery({ store: store._id, status: 6 });
+      await Delivery.findByIdAndUpdate(d2._id, { createdAt: now }, { overwriteImmutable: true });
+      const d3 = await createDelivery({ store: store._id, status: 0 });
+      await Delivery.findByIdAndUpdate(d3._id, { createdAt: now }, { overwriteImmutable: true });
+
+      const res = await request(app)
+        .get('/api/admin/dashboard')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.riders.pendingApproval).toBe(1);
+      expect(res.body.riders.active).toBe(1);
+      expect(res.body.riders.inactive).toBe(1);
+      expect(res.body.riders.total).toBe(3);
+      expect(res.body.stores.active).toBe(2); // a ativa + a criada pra entrega (createStore() default active:true)
+      expect(res.body.stores.inactive).toBe(1);
+      expect(res.body.deliveriesToday.requested).toBe(3);
+      expect(res.body.deliveriesToday.completed).toBe(1);
+      expect(res.body.deliveriesToday.cancelledOrReturned).toBe(1);
+    });
+
+    it('deve retornar tudo zerado quando não houver nenhum dado', async () => {
+      const { token } = await createAdminWithToken({ password: '123456' });
+
+      const res = await request(app)
+        .get('/api/admin/dashboard')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
+        riders: { total: 0, active: 0, inactive: 0, pendingApproval: 0 },
+        stores: { total: 0, active: 0, inactive: 0 },
+        deliveriesToday: { requested: 0, completed: 0, cancelledOrReturned: 0 },
+      });
+    });
+  });
+
+  // =====================
+  // LIST RIDERS
+  // =====================
+  describe('GET /api/admin/riders', () => {
+    it('deve retornar 401 quando não autenticado (sem token)', async () => {
+      const res = await request(app).get('/api/admin/riders');
+      expect(res.status).toBe(401);
+    });
+
+    it('deve listar todos os riders por padrão, paginado, ordenado do mais recente pro mais antigo', async () => {
+      const { token } = await createAdminWithToken({ password: '123456' });
+      const r1 = await createRider({ name: 'Rider Antigo' });
+      const r2 = await createRider({ name: 'Rider Recente' });
+
+      const res = await request(app)
+        .get('/api/admin/riders')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toHaveLength(2);
+      expect(res.body.data[0]._id).toBe(r2._id.toString());
+      expect(res.body.data[1]._id).toBe(r1._id.toString());
+      expect(res.body.total).toBe(2);
+      expect(res.body.data[0].password).toBeUndefined();
+    });
+
+    it('deve filtrar por status=pending (accountApprovedAt null)', async () => {
+      const { token } = await createAdminWithToken({ password: '123456' });
+      const pendente = await createRider({ accountApprovedAt: null });
+      await createRider({ accountApprovedAt: new Date() });
+
+      const res = await request(app)
+        .get('/api/admin/riders?status=pending')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toHaveLength(1);
+      expect(res.body.data[0]._id).toBe(pendente._id.toString());
+    });
+
+    it('deve filtrar por status=active (aprovado e habilitado)', async () => {
+      const { token } = await createAdminWithToken({ password: '123456' });
+      const ativo = await createRider({ accountApprovedAt: new Date(), active: true });
+      await createRider({ accountApprovedAt: null }); // pendente, não deve aparecer
+      await createRider({ accountApprovedAt: new Date(), active: false }); // desativado, não deve aparecer
+
+      const res = await request(app)
+        .get('/api/admin/riders?status=active')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toHaveLength(1);
+      expect(res.body.data[0]._id).toBe(ativo._id.toString());
+    });
+
+    it('deve filtrar por status=inactive', async () => {
+      const { token } = await createAdminWithToken({ password: '123456' });
+      const inativo = await createRider({ active: false });
+      await createRider({ active: true });
+
+      const res = await request(app)
+        .get('/api/admin/riders?status=inactive')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toHaveLength(1);
+      expect(res.body.data[0]._id).toBe(inativo._id.toString());
+    });
+
+    it('deve filtrar por cidade', async () => {
+      const { token } = await createAdminWithToken({ password: '123456' });
+      const cidade = await createCity();
+      const daCidade = await createRider({ city: cidade._id });
+      await createRider(); // outra cidade (factory cria uma nova por padrão)
+
+      const res = await request(app)
+        .get(`/api/admin/riders?city=${cidade._id}`)
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toHaveLength(1);
+      expect(res.body.data[0]._id).toBe(daCidade._id.toString());
+    });
+
+    it('deve buscar por nome ou email (case-insensitive)', async () => {
+      const { token } = await createAdminWithToken({ password: '123456' });
+      const alvo = await createRider({ name: 'Carlos Andrade', email: 'carlos@test.com' });
+      await createRider({ name: 'Fernanda Lima', email: 'fernanda@test.com' });
+
+      const res = await request(app)
+        .get('/api/admin/riders?search=carlos')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toHaveLength(1);
+      expect(res.body.data[0]._id).toBe(alvo._id.toString());
+    });
+
+    it('deve respeitar page/limit', async () => {
+      const { token } = await createAdminWithToken({ password: '123456' });
+      for (let i = 0; i < 5; i++) await createRider();
+
+      const res = await request(app)
+        .get('/api/admin/riders?page=2&limit=2')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toHaveLength(2);
+      expect(res.body.page).toBe(2);
+      expect(res.body.totalPages).toBe(3);
+    });
+
+    it('deve retornar 400 quando status for inválido', async () => {
+      const { token } = await createAdminWithToken({ password: '123456' });
+
+      const res = await request(app)
+        .get('/api/admin/riders?status=xyz')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(400);
+    });
+  });
+
+  // =====================
+  // GET RIDER
+  // =====================
+  describe('GET /api/admin/riders/:id', () => {
+    it('deve retornar 401 quando não autenticado (sem token)', async () => {
+      const rider = await createRider();
+      const res = await request(app).get(`/api/admin/riders/${rider._id}`);
+      expect(res.status).toBe(401);
+    });
+
+    it('deve retornar 404 quando o rider não existir', async () => {
+      const { token } = await createAdminWithToken({ password: '123456' });
+      const rider = await createRider();
+      await Rider.findByIdAndDelete(rider._id);
+
+      const res = await request(app)
+        .get(`/api/admin/riders/${rider._id}`)
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(404);
+    });
+
+    it('deve retornar 404 quando o id for inválido (CastError)', async () => {
+      const { token } = await createAdminWithToken({ password: '123456' });
+
+      const res = await request(app)
+        .get('/api/admin/riders/id-invalido')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(404);
+    });
+
+    it('deve retornar 200 e os dados do rider, sem a senha, com a cidade populada', async () => {
+      const { token } = await createAdminWithToken({ password: '123456' });
+      const rider = await createRider();
+
+      const res = await request(app)
+        .get(`/api/admin/riders/${rider._id}`)
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body._id).toBe(rider._id.toString());
+      expect(res.body.password).toBeUndefined();
+      expect(res.body.city).toHaveProperty('name');
+    });
+  });
+
+  // =====================
+  // LIST STORES
+  // =====================
+  describe('GET /api/admin/stores', () => {
+    it('deve retornar 401 quando não autenticado (sem token)', async () => {
+      const res = await request(app).get('/api/admin/stores');
+      expect(res.status).toBe(401);
+    });
+
+    it('deve listar todas as lojas por padrão, sem a senha', async () => {
+      const { token } = await createAdminWithToken({ password: '123456' });
+      await createStore();
+      await createStore();
+
+      const res = await request(app)
+        .get('/api/admin/stores')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toHaveLength(2);
+      expect(res.body.data[0].password).toBeUndefined();
+    });
+
+    it('deve filtrar por status=active e status=inactive', async () => {
+      const { token } = await createAdminWithToken({ password: '123456' });
+      const ativa = await createStore({ active: true });
+      await createStore({ active: false });
+
+      const resAtivas = await request(app)
+        .get('/api/admin/stores?status=active')
+        .set('Authorization', `Bearer ${token}`);
+      expect(resAtivas.body.data).toHaveLength(1);
+      expect(resAtivas.body.data[0]._id).toBe(ativa._id.toString());
+
+      const resInativas = await request(app)
+        .get('/api/admin/stores?status=inactive')
+        .set('Authorization', `Bearer ${token}`);
+      expect(resInativas.body.data).toHaveLength(1);
+      expect(resInativas.body.data[0]._id).not.toBe(ativa._id.toString());
+    });
+
+    it('deve buscar por nome ou email', async () => {
+      const { token } = await createAdminWithToken({ password: '123456' });
+      const alvo = await createStore({ name: 'Pizzaria do Centro' });
+      await createStore({ name: 'Lanchonete da Praça' });
+
+      const res = await request(app)
+        .get('/api/admin/stores?search=pizzaria')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toHaveLength(1);
+      expect(res.body.data[0]._id).toBe(alvo._id.toString());
+    });
+  });
+
+  // =====================
+  // GET STORE
+  // =====================
+  describe('GET /api/admin/stores/:id', () => {
+    it('deve retornar 401 quando não autenticado (sem token)', async () => {
+      const store = await createStore();
+      const res = await request(app).get(`/api/admin/stores/${store._id}`);
+      expect(res.status).toBe(401);
+    });
+
+    it('deve retornar 404 quando a loja não existir', async () => {
+      const { token } = await createAdminWithToken({ password: '123456' });
+      const store = await createStore();
+      await Store.findByIdAndDelete(store._id);
+
+      const res = await request(app)
+        .get(`/api/admin/stores/${store._id}`)
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(404);
+    });
+
+    it('deve retornar 200 e os dados da loja, sem a senha', async () => {
+      const { token } = await createAdminWithToken({ password: '123456' });
+      const store = await createStore();
+
+      const res = await request(app)
+        .get(`/api/admin/stores/${store._id}`)
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body._id).toBe(store._id.toString());
+      expect(res.body.password).toBeUndefined();
+    });
+  });
+
+  // =====================
+  // LIST DELIVERIES (monitor da plataforma)
+  // =====================
+  describe('GET /api/admin/deliveries', () => {
+    it('deve retornar 401 quando não autenticado (sem token)', async () => {
+      const res = await request(app).get('/api/admin/deliveries');
+      expect(res.status).toBe(401);
+    });
+
+    it('deve listar entregas de QUALQUER loja (monitor da plataforma inteira)', async () => {
+      const { token } = await createAdminWithToken({ password: '123456' });
+      await createDelivery();
+      await createDelivery();
+
+      const res = await request(app)
+        .get('/api/admin/deliveries')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toHaveLength(2);
+      expect(res.body.data[0].store).toHaveProperty('name');
+    });
+
+    it('deve filtrar por status', async () => {
+      const { token } = await createAdminWithToken({ password: '123456' });
+      const entregue = await createDelivery({ status: 4 });
+      await createDelivery({ status: 0 });
+
+      const res = await request(app)
+        .get('/api/admin/deliveries?status=4')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toHaveLength(1);
+      expect(res.body.data[0]._id).toBe(entregue._id.toString());
+    });
+
+    it('deve filtrar por loja', async () => {
+      const { token } = await createAdminWithToken({ password: '123456' });
+      const store = await createStore();
+      const daLoja = await createDelivery({ store: store._id });
+      await createDelivery();
+
+      const res = await request(app)
+        .get(`/api/admin/deliveries?store=${store._id}`)
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toHaveLength(1);
+      expect(res.body.data[0]._id).toBe(daLoja._id.toString());
+    });
+
+    it('deve filtrar por rider', async () => {
+      const { token } = await createAdminWithToken({ password: '123456' });
+      const rider = await createRider();
+      const doRider = await createDelivery({ rider: rider._id });
+      await createDelivery();
+
+      const res = await request(app)
+        .get(`/api/admin/deliveries?rider=${rider._id}`)
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toHaveLength(1);
+      expect(res.body.data[0]._id).toBe(doRider._id.toString());
+    });
+
+    it('deve filtrar por cidade', async () => {
+      const { token } = await createAdminWithToken({ password: '123456' });
+      const cidade = await createCity();
+      const daCidade = await createDelivery({ city: cidade._id });
+      await createDelivery();
+
+      const res = await request(app)
+        .get(`/api/admin/deliveries?city=${cidade._id}`)
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toHaveLength(1);
+      expect(res.body.data[0]._id).toBe(daCidade._id.toString());
+    });
+
+    it('deve retornar 400 quando status for inválido', async () => {
+      const { token } = await createAdminWithToken({ password: '123456' });
+
+      const res = await request(app)
+        .get('/api/admin/deliveries?status=99')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(400);
+    });
+  });
+
+  // =====================
+  // LIST CITIES
+  // =====================
+  describe('GET /api/admin/cities', () => {
+    it('deve retornar 401 quando não autenticado (sem token)', async () => {
+      const res = await request(app).get('/api/admin/cities');
+      expect(res.status).toBe(401);
+    });
+
+    it('deve listar todas as cidades, ativas e inativas, ordenadas por nome', async () => {
+      const { token } = await createAdminWithToken({ password: '123456' });
+      await createCity({ name: 'Zoológico City', slug: `zoo-${Date.now()}` });
+      await createCity({ name: 'Alfaville', slug: `alfa-${Date.now()}`, active: false });
+
+      const res = await request(app)
+        .get('/api/admin/cities')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(2);
+      expect(res.body[0].name).toBe('Alfaville');
+      expect(res.body[1].name).toBe('Zoológico City');
+    });
   });
 });

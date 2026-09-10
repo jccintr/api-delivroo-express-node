@@ -1,4 +1,4 @@
-import { body } from 'express-validator';
+import { body, query } from 'express-validator';
 
 const BRAZIL_STATES = [
   'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA',
@@ -77,4 +77,94 @@ export const createCityValidator = [
 
       return true;
     }),
+];
+// Status possíveis pro filtro da listagem de riders no admin:
+// - pending: accountApprovedAt ainda não preenchido (precisa de revisão)
+// - active: aprovado E habilitado (active: true)
+// - inactive: desativado pelo admin (active: false), aprovado ou não
+// - all (ou omitido): sem filtro de status
+const RIDER_STATUS_FILTERS = ['pending', 'active', 'inactive', 'all'];
+const STORE_STATUS_FILTERS = ['active', 'inactive', 'all'];
+
+export const listRidersValidator = [
+  query('status')
+    .optional()
+    .isIn(RIDER_STATUS_FILTERS).withMessage(`Status deve ser um de: ${RIDER_STATUS_FILTERS.join(', ')}`),
+
+  query('city')
+    .optional()
+    .isMongoId().withMessage('Cidade inválida'),
+
+  query('search')
+    .optional()
+    .trim(),
+
+  query('page')
+    .optional()
+    .isInt({ min: 1 }).withMessage('Página deve ser um número inteiro a partir de 1')
+    .toInt(),
+
+  query('limit')
+    .optional()
+    .isInt({ min: 1, max: 100 }).withMessage('Limite deve ser um número inteiro entre 1 e 100')
+    .toInt(),
+];
+
+export const listStoresValidator = [
+  query('status')
+    .optional()
+    .isIn(STORE_STATUS_FILTERS).withMessage(`Status deve ser um de: ${STORE_STATUS_FILTERS.join(', ')}`),
+
+  query('city')
+    .optional()
+    .isMongoId().withMessage('Cidade inválida'),
+
+  query('search')
+    .optional()
+    .trim(),
+
+  query('page')
+    .optional()
+    .isInt({ min: 1 }).withMessage('Página deve ser um número inteiro a partir de 1')
+    .toInt(),
+
+  query('limit')
+    .optional()
+    .isInt({ min: 1, max: 100 }).withMessage('Limite deve ser um número inteiro entre 1 e 100')
+    .toInt(),
+];
+
+// Status numéricos da entrega (ver models/delivery.js): 0 solicitada,
+// 1 aceita, 2 retirada, 3 a caminho, 4 entregue, 5 devolvida, 6 cancelada.
+const DELIVERY_STATUS_VALUES = [0, 1, 2, 3, 4, 5, 6];
+
+export const listDeliveriesValidator = [
+  query('status')
+    .optional()
+    .isInt().withMessage(`Status deve ser um número entre 0 e 6`)
+    .toInt()
+    .custom((value) => DELIVERY_STATUS_VALUES.includes(value))
+    .withMessage(`Status deve ser um de: ${DELIVERY_STATUS_VALUES.join(', ')}`),
+
+  query('city')
+    .optional()
+    .isMongoId().withMessage('Cidade inválida'),
+
+  query('store')
+    .optional()
+    .isMongoId().withMessage('Loja inválida'),
+
+  query('rider')
+    .optional()
+    .isMongoId().withMessage('Entregador inválido'),
+
+  query('page')
+    .optional()
+    .isInt({ min: 1 }).withMessage('Página deve ser um número inteiro a partir de 1')
+    .toInt(),
+
+  query('limit')
+    .optional()
+    .isInt({ min: 1, max: 100 }).withMessage('Limite deve ser um número inteiro entre 1 e 100')
+    .toInt(),
 ];

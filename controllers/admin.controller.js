@@ -1,9 +1,12 @@
 import bcryptjs from 'bcryptjs';
 import jsonwebtoken from 'jsonwebtoken';
+import { matchedData } from 'express-validator';
 import Admin from '../models/admin.js';
 import Rider from '../models/rider.js';
 import Store from '../models/store.js';
 import City from '../models/city.js';
+import Delivery from '../models/delivery.js';
+import { todayBrazilRange } from '../utils/brazilDate.js';
 import { sendRiderAccountApprovedEmail } from '../utils/sendEmailV2.js';
 
 export const register = async (req, res) => {
@@ -240,6 +243,253 @@ export const setStoreActive = async (req, res) => {
 };
 
 
+
+// GET /admin/dashboard
+// Indicadores gerais da plataforma para a tela inicial do admin — inclui
+// o indicador de entregadores com conta pendente de aprovação
+// (accountApprovedAt ainda null), que é o dado mais acionável do painel.
+export const getDashboardStats = async (req, res) => {
+  try {
+    const [
+      pendingApproval,
+      activeRiders,
+      inactiveRiders,
+      totalRiders,
+      activeStores,
+      inactiveStores,
+      totalStores,
+    ] = await Promise.all([
+      Rider.countDocuments({ accountApprovedAt: null }),
+      Rider.countDocuments({ active: true, accountApprovedAt: { $ne: null } }),
+      Rider.countDocuments({ active: false }),
+      Rider.countDocuments({}),
+      Store.countDocuments({ active: true }),
+      Store.countDocuments({ active: false }),
+      Store.countDocuments({}),
+    ]);
+
+    const today = todayBrazilRange();
+    const [deliveriesTodayResult] = await Delivery.aggregate([
+      { $match: { createdAt: { $gte: today.start, $lte: today.end } } },
+      {
+        $group: {
+          _id: null,
+          requested: { $sum: 1 },
+          completed: { $sum: { $cond: [{ $eq: ['$status', 4] }, 1, 0] } },
+          cancelledOrReturned: { $sum: { $cond: [{ $in: ['$status', [5, 6]] }, 1, 0] } },
+        },
+      },
+    ]);
+
+    return res.status(200).json({
+      riders: {
+        total: totalRiders,
+        active: activeRiders,
+        inactive: inactiveRiders,
+        pendingApproval,
+      },
+      stores: {
+        total: totalStores,
+        active: activeStores,
+        inactive: inactiveStores,
+      },
+      deliveriesToday: {
+        requested: deliveriesTodayResult?.requested ?? 0,
+        completed: deliveriesTodayResult?.completed ?? 0,
+        cancelledOrReturned: deliveriesTodayResult?.cancelledOrReturned ?? 0,
+      },
+    });
+  } catch (error) {
+    console.error('Erro no getDashboardStats:', error);
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};
+
+// GET /admin/riders
+// Lista paginada de entregadores, com filtro por status — 'pending' é o
+// que alimenta a fila de aprovação (ver getDashboardStats/approveRider),
+// 'active'/'inactive' refletem o campo `active`, e cidade/busca por
+// nome-ou-email são complementares para achar um rider específico.
+export const listRiders = async (req, res) => {
+  try {
+    const { status, city, search, page = 1, limit = 20 } = matchedData(req, { locations: ['query'] });
+
+    const filter = {};
+    if (city) filter.city = city;
+    if (status === 'pending') filter.accountApprovedAt = null;
+    if (status === 'active') {
+      filter.active = true;
+      filter.accountApprovedAt = { $ne: null };
+    }
+    if (status === 'inactive') filter.active = false;
+    if (search) {
+      const regex = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      filter.$or = [{ name: regex }, { email: regex }];
+    }
+
+    const skip = (page - 1) * limit;
+    const [riders, total] = await Promise.all([
+      Rider.find(filter)
+        .select('-password -resetPasswordCode -resetPasswordCodeExpiresAt -emailVerificationCode')
+        .populate('city', 'name state')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      Rider.countDocuments(filter),
+    ]);
+
+    return res.status(200).json({
+      data: riders,
+      page,
+      limit,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    });
+  } catch (error) {
+    console.error('Erro no listRiders:', error);
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};
+
+// GET /admin/riders/:id
+// Detalhe de um entregador específico — usado na tela de revisão antes de
+// aprovar (mostra documentImage) e na tela de detalhe geral.
+export const getRider = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const rider = await Rider.findById(id)
+      .select('-password -resetPasswordCode -resetPasswordCodeExpiresAt -emailVerificationCode')
+      .populate('city', 'name state');
+
+    if (!rider) {
+      return res.status(404).json({ error: 'Entregador não encontrado.' });
+    }
+
+    return res.status(200).json(rider);
+  } catch (error) {
+    if (error.name === 'CastError') {
+      return res.status(404).json({ error: 'Entregador não encontrado.' });
+    }
+    console.error('Erro no getRider:', error);
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};
+
+// GET /admin/stores
+// Lista paginada de lojas, com os mesmos filtros de status/cidade/busca
+// da listagem de riders (ativa/inativa/todas + nome-ou-email).
+export const listStores = async (req, res) => {
+  try {
+    const { status, city, search, page = 1, limit = 20 } = matchedData(req, { locations: ['query'] });
+
+    const filter = {};
+    if (city) filter.city = city;
+    if (status === 'active') filter.active = true;
+    if (status === 'inactive') filter.active = false;
+    if (search) {
+      const regex = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      filter.$or = [{ name: regex }, { email: regex }];
+    }
+
+    const skip = (page - 1) * limit;
+    const [stores, total] = await Promise.all([
+      Store.find(filter)
+        .select('-password -resetPasswordCode -resetPasswordCodeExpiresAt -emailVerificationCode')
+        .populate('city', 'name state')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      Store.countDocuments(filter),
+    ]);
+
+    return res.status(200).json({
+      data: stores,
+      page,
+      limit,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    });
+  } catch (error) {
+    console.error('Erro no listStores:', error);
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};
+
+// GET /admin/stores/:id
+export const getStore = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const store = await Store.findById(id)
+      .select('-password -resetPasswordCode -resetPasswordCodeExpiresAt -emailVerificationCode')
+      .populate('city', 'name state');
+
+    if (!store) {
+      return res.status(404).json({ error: 'Loja não encontrada.' });
+    }
+
+    return res.status(200).json(store);
+  } catch (error) {
+    if (error.name === 'CastError') {
+      return res.status(404).json({ error: 'Loja não encontrada.' });
+    }
+    console.error('Erro no getStore:', error);
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};
+
+// GET /admin/deliveries
+// Monitor de entregas da plataforma inteira (todas as lojas/cidades),
+// diferente dos endpoints de loja/rider que só veem o próprio recorte.
+// Filtros são todos opcionais e combináveis: status, cidade, loja, rider.
+export const listDeliveries = async (req, res) => {
+  try {
+    const { status, city, store, rider, page = 1, limit = 20 } = matchedData(req, { locations: ['query'] });
+
+    const filter = {};
+    if (status !== undefined) filter.status = status;
+    if (city) filter.city = city;
+    if (store) filter.store = store;
+    if (rider) filter.rider = rider;
+
+    const skip = (page - 1) * limit;
+    const [deliveries, total] = await Promise.all([
+      Delivery.find(filter)
+        .populate('store', 'name avatar')
+        .populate('rider', 'name phone avatar vehicle rating')
+        .populate('city', 'name state')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      Delivery.countDocuments(filter),
+    ]);
+
+    return res.status(200).json({
+      data: deliveries,
+      page,
+      limit,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    });
+  } catch (error) {
+    console.error('Erro no listDeliveries:', error);
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};
+
+// GET /admin/cities
+// Lista simples de todas as cidades (ativas e inativas) — usada pra
+// popular filtros de cidade nas telas de riders/stores/deliveries.
+export const listCities = async (req, res) => {
+  try {
+    const cities = await City.find().sort({ name: 1 });
+    return res.status(200).json(cities);
+  } catch (error) {
+    console.error('Erro no listCities:', error);
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};
 
 export const createCity = async (req, res) => {
   try {
