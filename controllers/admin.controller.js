@@ -6,6 +6,7 @@ import Rider from '../models/rider.js';
 import Store from '../models/store.js';
 import City from '../models/city.js';
 import Delivery from '../models/delivery.js';
+import PlatformSettings, { getOrCreatePlatformSettings } from '../models/platformSettings.js';
 import { todayBrazilRange } from '../utils/brazilDate.js';
 import { sendRiderAccountApprovedEmail } from '../utils/sendEmailV2.js';
 
@@ -537,6 +538,55 @@ export const createCity = async (req, res) => {
       return res.status(400).json({ error: 'Já existe uma cidade com este slug.' });
     }
 
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};
+
+// GET /admin/platform-settings
+// Retorna a configuração global de faturamento vigente (taxa por entrega e
+// estado da promoção de entregas grátis). Cria o documento com os valores
+// padrão na primeira chamada, se ele ainda não existir.
+export const getPlatformSettings = async (req, res) => {
+  try {
+    const settings = await getOrCreatePlatformSettings();
+    return res.status(200).json(settings);
+  } catch (error) {
+    console.error('Erro no getPlatformSettings:', error);
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};
+
+// PATCH /admin/platform-settings
+// Atualiza a configuração global de faturamento. Todos os campos são
+// opcionais — só os enviados são alterados. Efeitos práticos:
+// - deliveryFee: vale a partir da PRÓXIMA entrega concluída (entregas já
+//   concluídas mantêm o valor gravado em delivery.platformFee).
+// - freeDeliveriesPromoActive: desativar aqui NÃO mexe no saldo de lojas
+//   que já receberam crédito — só passa a zerar o saldo inicial de quem
+//   se cadastrar depois (ver register() em store.controller.js).
+// - freeDeliveriesGranted: só vale para cadastros futuros, não retroage
+//   sobre o saldo já concedido a lojas existentes.
+export const updatePlatformSettings = async (req, res) => {
+  try {
+    const { deliveryFee, freeDeliveriesPromoActive, freeDeliveriesGranted } = matchedData(req, { locations: ['body'] });
+
+    const update = {};
+    if (deliveryFee !== undefined) update.deliveryFee = deliveryFee;
+    if (freeDeliveriesPromoActive !== undefined) update.freeDeliveriesPromoActive = freeDeliveriesPromoActive;
+    if (freeDeliveriesGranted !== undefined) update.freeDeliveriesGranted = freeDeliveriesGranted;
+
+    // Garante que o singleton já existe antes de tentar atualizá-lo.
+    await getOrCreatePlatformSettings();
+
+    const settings = await PlatformSettings.findOneAndUpdate(
+      {},
+      update,
+      { returnDocument: 'after' },
+    );
+
+    return res.status(200).json(settings);
+  } catch (error) {
+    console.error('Erro no updatePlatformSettings:', error);
     return res.status(500).json({ error: 'Erro interno do servidor.' });
   }
 };

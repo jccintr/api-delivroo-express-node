@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import app from '../app.js';
 import Store from '../models/store.js';
+import PlatformSettings from '../models/platformSettings.js';
 import bcryptjs from 'bcryptjs';
 import jsonwebtoken from 'jsonwebtoken';
 import * as sendEmail from '../utils/sendEmailV2.js';
@@ -77,6 +78,75 @@ describe('Store Routes', () => {
         expect(res.body.store).toBeDefined();
         expect(res.body.store.email).toBe(storePayload.email);
         expect(res.body.store.password).toBeUndefined(); 
+    });
+
+    // =====================
+    // Saldo de entregas grátis concedido no cadastro
+    // =====================
+    it('deve conceder o saldo padrão de entregas grátis quando não há PlatformSettings configurado', async () => {
+      const city = await createCity();
+      vi.spyOn(sendEmail, 'sendStoreVerificationAccountEmail').mockResolvedValue({});
+
+      const res = await request(app)
+        .post('/api/stores/register')
+        .send({
+          name: 'Loja Sem Config',
+          email: 'sem-config@test.com',
+          password: '123456',
+          phone: '11999999999',
+          cityId: city._id,
+        });
+
+      expect(res.status).toBe(201);
+      // Sem documento de PlatformSettings ainda, getOrCreatePlatformSettings()
+      // cria um com os valores padrão: promoção ativa e 5 entregas grátis.
+      expect(res.body.store.freeDeliveriesRemaining).toBe(5);
+
+      const settings = await PlatformSettings.findOne();
+      expect(settings).not.toBeNull();
+      expect(settings.freeDeliveriesPromoActive).toBe(true);
+      expect(settings.freeDeliveriesGranted).toBe(5);
+    });
+
+    it('deve conceder o valor de freeDeliveriesGranted configurado, quando a promoção está ativa', async () => {
+      const city = await createCity();
+      await PlatformSettings.create({ freeDeliveriesPromoActive: true, freeDeliveriesGranted: 10 });
+      vi.spyOn(sendEmail, 'sendStoreVerificationAccountEmail').mockResolvedValue({});
+
+      const res = await request(app)
+        .post('/api/stores/register')
+        .send({
+          name: 'Loja Promo Custom',
+          email: 'promo-custom@test.com',
+          password: '123456',
+          phone: '11999999999',
+          cityId: city._id,
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.store.freeDeliveriesRemaining).toBe(10);
+    });
+
+    it('não deve conceder saldo de entregas grátis quando a promoção está desativada', async () => {
+      const city = await createCity();
+      await PlatformSettings.create({ freeDeliveriesPromoActive: false, freeDeliveriesGranted: 5 });
+      vi.spyOn(sendEmail, 'sendStoreVerificationAccountEmail').mockResolvedValue({});
+
+      const res = await request(app)
+        .post('/api/stores/register')
+        .send({
+          name: 'Loja Sem Promo',
+          email: 'sem-promo@test.com',
+          password: '123456',
+          phone: '11999999999',
+          cityId: city._id,
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.store.freeDeliveriesRemaining).toBe(0);
+
+      const storeInDb = await Store.findOne({ email: 'sem-promo@test.com' });
+      expect(storeInDb.freeDeliveriesRemaining).toBe(0);
     });
   });
   // =====================

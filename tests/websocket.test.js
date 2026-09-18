@@ -43,7 +43,19 @@ describe('websocket — notificação em tempo real da loja', () => {
   afterEach(async () => {
     clients.forEach((c) => c.readyState === WebSocket.OPEN && c.close());
     clients = [];
-    await new Promise((resolve) => server?.close(resolve));
+    // server pode ser undefined em testes que não chamam startServer() (ex:
+    // "notifyStore não lança erro quando a loja não está conectada") — nesse
+    // caso não há nada pra fechar, mas a Promise ainda precisa resolver, ou
+    // o hook trava até o timeout. `server?.close(resolve)` sozinho NÃO
+    // chama resolve() quando server é undefined (o optional chaining só
+    // curto-circuita a chamada de .close, e resolve nunca é invocado).
+    await new Promise((resolve) => {
+      if (server) {
+        server.close(resolve);
+      } else {
+        resolve();
+      }
+    });
     server = undefined;
     wss = undefined;
   });

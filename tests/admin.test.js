@@ -5,6 +5,7 @@ import Rider from '../models/rider.js';
 import Store from '../models/store.js';
 import City from '../models/city.js';
 import Delivery from '../models/delivery.js';
+import PlatformSettings from '../models/platformSettings.js';
 import {createAdmin,createAdminWithToken} from './factories/admin.factory.js'
 import {createStore} from './factories/store.factory.js'
 import {createRider} from './factories/rider.factory.js'
@@ -1013,6 +1014,169 @@ describe('Admin Routes', () => {
       expect(res.body).toHaveLength(2);
       expect(res.body[0].name).toBe('Alfaville');
       expect(res.body[1].name).toBe('Zoológico City');
+    });
+  });
+
+  // =====================
+  // GET PLATFORM SETTINGS
+  // =====================
+  describe('GET /api/admin/platform-settings', () => {
+    it('deve retornar 401 quando não autenticado (sem token)', async () => {
+      const res = await request(app).get('/api/admin/platform-settings');
+      expect(res.status).toBe(401);
+    });
+
+    it('deve criar e retornar as configurações padrão quando ainda não existirem', async () => {
+      const { token } = await createAdminWithToken({ password: '123456' });
+
+      const res = await request(app)
+        .get('/api/admin/platform-settings')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.deliveryFee).toBe(1.5);
+      expect(res.body.freeDeliveriesPromoActive).toBe(true);
+      expect(res.body.freeDeliveriesGranted).toBe(5);
+
+      // E o documento singleton deve ter sido persistido no banco
+      const settingsCount = await PlatformSettings.countDocuments();
+      expect(settingsCount).toBe(1);
+    });
+
+    it('deve retornar as configurações já existentes, sem recriá-las', async () => {
+      await PlatformSettings.create({ deliveryFee: 3, freeDeliveriesPromoActive: false, freeDeliveriesGranted: 8 });
+      const { token } = await createAdminWithToken({ password: '123456' });
+
+      const res = await request(app)
+        .get('/api/admin/platform-settings')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.deliveryFee).toBe(3);
+      expect(res.body.freeDeliveriesPromoActive).toBe(false);
+      expect(res.body.freeDeliveriesGranted).toBe(8);
+
+      const settingsCount = await PlatformSettings.countDocuments();
+      expect(settingsCount).toBe(1);
+    });
+  });
+
+  // =====================
+  // UPDATE PLATFORM SETTINGS
+  // =====================
+  describe('PATCH /api/admin/platform-settings', () => {
+    it('deve retornar 401 quando não autenticado (sem token)', async () => {
+      const res = await request(app)
+        .patch('/api/admin/platform-settings')
+        .send({ deliveryFee: 2 });
+
+      expect(res.status).toBe(401);
+    });
+
+    it('deve retornar 400 quando deliveryFee for negativo', async () => {
+      const { token } = await createAdminWithToken({ password: '123456' });
+
+      const res = await request(app)
+        .patch('/api/admin/platform-settings')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ deliveryFee: -1 });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('Dados inválidos');
+      expect(res.body.details).toBeInstanceOf(Array);
+      expect(res.body.details[0].message).toBe('Taxa por entrega deve ser um número maior ou igual a 0');
+    });
+
+    it('deve retornar 400 quando freeDeliveriesPromoActive não for booleano', async () => {
+      const { token } = await createAdminWithToken({ password: '123456' });
+
+      const res = await request(app)
+        .patch('/api/admin/platform-settings')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ freeDeliveriesPromoActive: 'sim' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.details[0].message).toBe('freeDeliveriesPromoActive deve ser um booleano');
+    });
+
+    it('deve retornar 400 quando freeDeliveriesGranted for negativo', async () => {
+      const { token } = await createAdminWithToken({ password: '123456' });
+
+      const res = await request(app)
+        .patch('/api/admin/platform-settings')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ freeDeliveriesGranted: -3 });
+
+      expect(res.status).toBe(400);
+      expect(res.body.details[0].message).toBe('Quantidade de entregas grátis deve ser um número inteiro maior ou igual a 0');
+    });
+
+    it('deve atualizar apenas deliveryFee, mantendo os demais campos inalterados', async () => {
+      await PlatformSettings.create({ deliveryFee: 1.5, freeDeliveriesPromoActive: true, freeDeliveriesGranted: 5 });
+      const { token } = await createAdminWithToken({ password: '123456' });
+
+      const res = await request(app)
+        .patch('/api/admin/platform-settings')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ deliveryFee: 2 });
+
+      expect(res.status).toBe(200);
+      expect(res.body.deliveryFee).toBe(2);
+      expect(res.body.freeDeliveriesPromoActive).toBe(true);
+      expect(res.body.freeDeliveriesGranted).toBe(5);
+    });
+
+    it('deve desativar a promoção de entregas grátis sem mexer na taxa vigente', async () => {
+      await PlatformSettings.create({ deliveryFee: 1.5, freeDeliveriesPromoActive: true, freeDeliveriesGranted: 5 });
+      const { token } = await createAdminWithToken({ password: '123456' });
+
+      const res = await request(app)
+        .patch('/api/admin/platform-settings')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ freeDeliveriesPromoActive: false });
+
+      expect(res.status).toBe(200);
+      expect(res.body.freeDeliveriesPromoActive).toBe(false);
+      expect(res.body.deliveryFee).toBe(1.5);
+    });
+
+    it('deve atualizar todos os campos de uma vez e persistir as mudanças', async () => {
+      await PlatformSettings.create({ deliveryFee: 1.5, freeDeliveriesPromoActive: true, freeDeliveriesGranted: 5 });
+      const { token } = await createAdminWithToken({ password: '123456' });
+
+      const patchRes = await request(app)
+        .patch('/api/admin/platform-settings')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ deliveryFee: 2.75, freeDeliveriesPromoActive: false, freeDeliveriesGranted: 3 });
+
+      expect(patchRes.status).toBe(200);
+      expect(patchRes.body.deliveryFee).toBe(2.75);
+      expect(patchRes.body.freeDeliveriesPromoActive).toBe(false);
+      expect(patchRes.body.freeDeliveriesGranted).toBe(3);
+
+      // Confirma que persistiu de fato, e não só na resposta
+      const getRes = await request(app)
+        .get('/api/admin/platform-settings')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(getRes.body.deliveryFee).toBe(2.75);
+      expect(getRes.body.freeDeliveriesPromoActive).toBe(false);
+      expect(getRes.body.freeDeliveriesGranted).toBe(3);
+    });
+
+    it('deve criar as configurações com os padrões antes de aplicar o patch, quando ainda não existirem', async () => {
+      const { token } = await createAdminWithToken({ password: '123456' });
+
+      const res = await request(app)
+        .patch('/api/admin/platform-settings')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ deliveryFee: 4 });
+
+      expect(res.status).toBe(200);
+      expect(res.body.deliveryFee).toBe(4);
+      // Campos não enviados devem ter vindo do padrão criado na hora
+      expect(res.body.freeDeliveriesPromoActive).toBe(true);
+      expect(res.body.freeDeliveriesGranted).toBe(5);
     });
   });
 });

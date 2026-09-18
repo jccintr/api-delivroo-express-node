@@ -7,6 +7,7 @@ import {createDelivery,createDeliveryPayload} from './factories/delivery.factory
 import {createRider,createRiderWithToken} from './factories/rider.factory.js'
 import Store from '../models/store.js';
 import Rider from '../models/rider.js';
+import PlatformSettings from '../models/platformSettings.js';
 
 describe('delivery Routes', () => {
   // =====================
@@ -1695,6 +1696,105 @@ describe('delivery Routes', () => {
       expect(res.body.status).toBe(4);
       expect(res.body.deliveredAt).not.toBeNull();
       expect(res.body.events[0].descricao).toBe('Pacote entregue');
+    });
+
+    // =====================
+    // Taxa da plataforma (platformFee / platformFeeWaived)
+    // =====================
+    it('deve cobrar a taxa vigente da plataforma quando a loja não tem saldo de entregas grátis', async () => {
+      await PlatformSettings.create({ deliveryFee: 2.5, freeDeliveriesPromoActive: false, freeDeliveriesGranted: 5 });
+      const { token, rider } = await createRiderWithToken({ password: '123456' });
+      await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
+      const store = await createStore({ freeDeliveriesRemaining: 0 });
+      const delivery = await createDelivery({ status: 3, rider: rider._id, store: store._id });
+
+      const res = await request(app).post(`/api/riders/deliveries/${delivery._id}/deliver`)
+            .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.platformFee).toBe(2.5);
+      expect(res.body.platformFeeWaived).toBe(false);
+
+      const storeInDb = await Store.findById(store._id);
+      expect(storeInDb.freeDeliveriesRemaining).toBe(0);
+    });
+
+    it('deve usar a taxa padrão (R$1,50) quando não há PlatformSettings configurado', async () => {
+      const { token, rider } = await createRiderWithToken({ password: '123456' });
+      await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
+      const store = await createStore({ freeDeliveriesRemaining: 0 });
+      const delivery = await createDelivery({ status: 3, rider: rider._id, store: store._id });
+
+      const res = await request(app).post(`/api/riders/deliveries/${delivery._id}/deliver`)
+            .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.platformFee).toBe(1.5);
+      expect(res.body.platformFeeWaived).toBe(false);
+    });
+
+    it('deve isentar a taxa e consumir 1 crédito quando a loja tem saldo de entregas grátis', async () => {
+      await PlatformSettings.create({ deliveryFee: 2.5, freeDeliveriesPromoActive: true, freeDeliveriesGranted: 5 });
+      const { token, rider } = await createRiderWithToken({ password: '123456' });
+      await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
+      const store = await createStore({ freeDeliveriesRemaining: 3 });
+      const delivery = await createDelivery({ status: 3, rider: rider._id, store: store._id });
+
+      const res = await request(app).post(`/api/riders/deliveries/${delivery._id}/deliver`)
+            .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.platformFee).toBe(0);
+      expect(res.body.platformFeeWaived).toBe(true);
+
+      // 1 crédito consumido do saldo da loja, e só 1 — não a taxa cheia
+      const storeInDb = await Store.findById(store._id);
+      expect(storeInDb.freeDeliveriesRemaining).toBe(2);
+    });
+
+    it('deve voltar a cobrar a taxa cheia quando o saldo de entregas grátis da loja chega a 0', async () => {
+      await PlatformSettings.create({ deliveryFee: 2.5, freeDeliveriesPromoActive: true, freeDeliveriesGranted: 5 });
+      const { token: token1, rider: rider1 } = await createRiderWithToken({ password: '123456' });
+      await Rider.findByIdAndUpdate(rider1._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
+      const { token: token2, rider: rider2 } = await createRiderWithToken({ password: '123456' });
+      await Rider.findByIdAndUpdate(rider2._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
+
+      const store = await createStore({ freeDeliveriesRemaining: 1 });
+      const firstDelivery = await createDelivery({ status: 3, rider: rider1._id, store: store._id });
+      const secondDelivery = await createDelivery({ status: 3, rider: rider2._id, store: store._id });
+
+      const firstRes = await request(app).post(`/api/riders/deliveries/${firstDelivery._id}/deliver`)
+            .set('Authorization', `Bearer ${token1}`);
+      expect(firstRes.body.platformFee).toBe(0);
+      expect(firstRes.body.platformFeeWaived).toBe(true);
+
+      const secondRes = await request(app).post(`/api/riders/deliveries/${secondDelivery._id}/deliver`)
+            .set('Authorization', `Bearer ${token2}`);
+      expect(secondRes.body.platformFee).toBe(2.5);
+      expect(secondRes.body.platformFeeWaived).toBe(false);
+
+      const storeInDb = await Store.findById(store._id);
+      expect(storeInDb.freeDeliveriesRemaining).toBe(0);
+    });
+
+    it('não deve cobrar taxa nem consumir crédito ao tentar confirmar uma entrega já entregue', async () => {
+      const { token, rider } = await createRiderWithToken({ password: '123456' });
+      await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
+      const store = await createStore({ freeDeliveriesRemaining: 3 });
+      const delivery = await createDelivery({ status: 3, rider: rider._id, store: store._id });
+
+      const first = await request(app).post(`/api/riders/deliveries/${delivery._id}/deliver`)
+            .set('Authorization', `Bearer ${token}`);
+      expect(first.status).toBe(200);
+
+      const second = await request(app).post(`/api/riders/deliveries/${delivery._id}/deliver`)
+            .set('Authorization', `Bearer ${token}`);
+      expect(second.status).toBe(409);
+
+      // A 2ª tentativa (que falhou por já estar entregue) não pode ter
+      // consumido um 2º crédito — só o 1º deliver bem-sucedido conta.
+      const storeInDb = await Store.findById(store._id);
+      expect(storeInDb.freeDeliveriesRemaining).toBe(2);
     });
   });
 

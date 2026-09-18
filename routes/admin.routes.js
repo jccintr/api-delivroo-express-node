@@ -1,9 +1,8 @@
-
 import { Router } from 'express';
 import * as AdminController from '../controllers/admin.controller.js';
 import AuthAdmin from '../middlewares/auth.admin.js';
 import {validate} from '../middlewares/validate.js'
-import { registerValidator, loginValidator, createCityValidator, listRidersValidator, listStoresValidator, listDeliveriesValidator } from '../validators/admin.validator.js';
+import { registerValidator, loginValidator, createCityValidator, listRidersValidator, listStoresValidator, listDeliveriesValidator, updatePlatformSettingsValidator } from '../validators/admin.validator.js';
 
 const router = Router();
 
@@ -22,5 +21,7 @@ router.patch('/stores/:id/active', AuthAdmin, AdminController.setStoreActive);
 router.get('/deliveries', AuthAdmin, listDeliveriesValidator, validate, AdminController.listDeliveries);
 router.get('/cities', AuthAdmin, AdminController.listCities);
 router.post('/cities', AuthAdmin,createCityValidator, validate, AdminController.createCity);
+router.get('/platform-settings', AuthAdmin, AdminController.getPlatformSettings);
+router.patch('/platform-settings', AuthAdmin, updatePlatformSettingsValidator, validate, AdminController.updatePlatformSettings);
 
 export default router;

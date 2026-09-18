@@ -168,3 +168,20 @@ export const listDeliveriesValidator = [
     .isInt({ min: 1, max: 100 }).withMessage('Limite deve ser um número inteiro entre 1 e 100')
     .toInt(),
 ];
+
+export const updatePlatformSettingsValidator = [
+  body('deliveryFee')
+    .optional()
+    .isFloat({ min: 0 }).withMessage('Taxa por entrega deve ser um número maior ou igual a 0')
+    .toFloat(),
+
+  body('freeDeliveriesPromoActive')
+    .optional()
+    .isBoolean().withMessage('freeDeliveriesPromoActive deve ser um booleano')
+    .toBoolean(),
+
+  body('freeDeliveriesGranted')
+    .optional()
+    .isInt({ min: 0 }).withMessage('Quantidade de entregas grátis deve ser um número inteiro maior ou igual a 0')
+    .toInt(),
+];

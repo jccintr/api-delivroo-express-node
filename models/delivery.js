@@ -87,6 +87,26 @@ riderPayout: {
   required: true,
   min: 0,
 },
+// Taxa da plataforma cobrada da loja por esta entrega — preenchida apenas
+// quando a entrega é concluída (status 4, ver deliverDelivery), nunca na
+// criação. Fica null até lá. Reflete o valor vigente em PlatformSettings
+// no MOMENTO da conclusão (ou 0 se coberta pelo saldo de entregas grátis
+// da loja), não o valor atual — não muda retroativamente se a taxa da
+// plataforma for alterada depois.
+platformFee: {
+  type: Number,
+  required: false,
+  default: null,
+  min: 0,
+},
+// true quando esta entrega consumiu 1 crédito do saldo de entregas grátis
+// da loja (platformFee ficou 0 por isso, não porque a taxa vigente era 0).
+// Existe para diferenciar os dois casos em relatórios/fatura.
+platformFeeWaived: {
+  type: Boolean,
+  required: false,
+  default: false,
+},
 
 }, { timestamps: true });
 

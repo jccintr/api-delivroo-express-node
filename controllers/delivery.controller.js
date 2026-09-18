@@ -1,6 +1,7 @@
 import Store from '../models/store.js';
 import Delivery from '../models/delivery.js';
 import Rider from '../models/rider.js';
+import { getOrCreatePlatformSettings } from '../models/platformSettings.js';
 import { distanceBetween } from '../utils/googleMaps.js';
 import { buildStoreAddressText } from '../utils/address.js';
 import { todayBrazilRange, weekBrazilRange, monthBrazilRange, lastNDaysBrazilRange } from '../utils/brazilDate.js';
@@ -14,7 +15,7 @@ import { matchedData } from 'express-validator';
 // definida. Por enquanto gera um valor aleatório só para termos o dado
 // preenchido e podermos avançar no front do rider.
 function calculateRiderPayout(km) {
- const BASE = 8.55;
+  const BASE = 8.55;
   const PRECO_KM = 1.6;
   const MINIMO = 8;
   const LIMITE_LINEAR = 15;
@@ -32,6 +33,30 @@ function calculateRiderPayout(km) {
   }
 
   return Math.max(MINIMO, Math.round(taxa));
+}
+
+// Calcula e "cobra" a taxa da plataforma referente a UMA entrega concluída.
+// Chamada só depois que a transição de status para 4 (entregue) já foi
+// confirmada de forma atômica em deliverDelivery — ou seja, roda no máximo
+// uma vez por entrega, sem risco de dupla contagem em corrida.
+//
+// Prioridade: se a loja ainda tem saldo de entregas grátis, consome 1
+// crédito (de forma atômica, via findOneAndUpdate com $gt:0 — evita duas
+// entregas concluídas ao mesmo tempo consumirem o mesmo crédito) e a taxa
+// fica 0. Só quando não há mais saldo é que se aplica a taxa vigente em
+// PlatformSettings.
+async function chargePlatformFeeForDelivery(storeId) {
+  const storeAfterConsumingCredit = await Store.findOneAndUpdate(
+    { _id: storeId, freeDeliveriesRemaining: { $gt: 0 } },
+    { $inc: { freeDeliveriesRemaining: -1 } },
+  );
+
+  if (storeAfterConsumingCredit) {
+    return { platformFee: 0, platformFeeWaived: true };
+  }
+
+  const settings = await getOrCreatePlatformSettings();
+  return { platformFee: settings.deliveryFee, platformFeeWaived: false };
 }
 
 // POST /stores/deliveries
@@ -467,6 +492,14 @@ export const deliverDelivery = async (req, res) => {
     if (!delivery) {
       return res.status(status).json({ error });
     }
+
+    // A transição de status acima já é atômica e só passa uma vez por
+    // entrega — a partir daqui é seguro calcular e gravar a taxa da
+    // plataforma sem risco de cobrar a mesma entrega duas vezes.
+    const { platformFee, platformFeeWaived } = await chargePlatformFeeForDelivery(delivery.store._id ?? delivery.store);
+    delivery.platformFee = platformFee;
+    delivery.platformFeeWaived = platformFeeWaived;
+    await delivery.save();
 
     return res.status(200).json(delivery);
   } catch (error) {
