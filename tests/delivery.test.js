@@ -7,7 +7,7 @@ import {createDelivery,createDeliveryPayload} from './factories/delivery.factory
 import {createRider,createRiderWithToken} from './factories/rider.factory.js'
 import Store from '../models/store.js';
 import Rider from '../models/rider.js';
-import PlatformSettings from '../models/platformsettings.js';
+import Settings from '../models/settings.js';
 
 describe('delivery Routes', () => {
   // =====================
@@ -710,7 +710,7 @@ describe('delivery Routes', () => {
       expect(res.body.today.avgDeliveryMinutes).toBeCloseTo(25, 1); // média de 30 e 20
     });
     it('billing: expõe a taxa vigente e o saldo de entregas grátis da loja, e soma totalPlatformFee/freeDeliveriesUsedCount por período', async () => {
-      await PlatformSettings.create({ deliveryFee: 2, freeDeliveriesPromoActive: true, freeDeliveriesGranted: 5 });
+      await Settings.create({ deliveryFee: 2, freeDeliveriesPromoActive: true, freeDeliveriesGranted: 5 });
       const { token, store } = await createStoreWithToken({ password: '123456', freeDeliveriesRemaining: 3 });
       await Store.findByIdAndUpdate(store._id, { emailVerifiedAt: new Date(), active: true });
       const now = new Date();
@@ -1738,7 +1738,7 @@ describe('delivery Routes', () => {
     // Taxa da plataforma (platformFee / platformFeeWaived)
     // =====================
     it('deve cobrar a taxa vigente da plataforma quando a loja não tem saldo de entregas grátis', async () => {
-      await PlatformSettings.create({ deliveryFee: 2.5, freeDeliveriesPromoActive: false, freeDeliveriesGranted: 5 });
+      await Settings.create({ deliveryFee: 2.5, freeDeliveriesPromoActive: false, freeDeliveriesGranted: 5 });
       const { token, rider } = await createRiderWithToken({ password: '123456' });
       await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
       const store = await createStore({ freeDeliveriesRemaining: 0 });
@@ -1755,7 +1755,7 @@ describe('delivery Routes', () => {
       expect(storeInDb.freeDeliveriesRemaining).toBe(0);
     });
 
-    it('deve usar a taxa padrão (R$1,50) quando não há PlatformSettings configurado', async () => {
+    it('deve usar a taxa padrão (R$1,50) quando não há Settings configurado', async () => {
       const { token, rider } = await createRiderWithToken({ password: '123456' });
       await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
       const store = await createStore({ freeDeliveriesRemaining: 0 });
@@ -1770,7 +1770,7 @@ describe('delivery Routes', () => {
     });
 
     it('deve isentar a taxa e consumir 1 crédito quando a loja tem saldo de entregas grátis', async () => {
-      await PlatformSettings.create({ deliveryFee: 2.5, freeDeliveriesPromoActive: true, freeDeliveriesGranted: 5 });
+      await Settings.create({ deliveryFee: 2.5, freeDeliveriesPromoActive: true, freeDeliveriesGranted: 5 });
       const { token, rider } = await createRiderWithToken({ password: '123456' });
       await Rider.findByIdAndUpdate(rider._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
       const store = await createStore({ freeDeliveriesRemaining: 3 });
@@ -1789,7 +1789,7 @@ describe('delivery Routes', () => {
     });
 
     it('deve voltar a cobrar a taxa cheia quando o saldo de entregas grátis da loja chega a 0', async () => {
-      await PlatformSettings.create({ deliveryFee: 2.5, freeDeliveriesPromoActive: true, freeDeliveriesGranted: 5 });
+      await Settings.create({ deliveryFee: 2.5, freeDeliveriesPromoActive: true, freeDeliveriesGranted: 5 });
       const { token: token1, rider: rider1 } = await createRiderWithToken({ password: '123456' });
       await Rider.findByIdAndUpdate(rider1._id, { emailVerifiedAt: new Date(), active: true, accountApprovedAt: new Date() });
       const { token: token2, rider: rider2 } = await createRiderWithToken({ password: '123456' });

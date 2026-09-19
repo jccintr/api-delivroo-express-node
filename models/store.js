@@ -51,7 +51,7 @@ const storeSchema = new mongoose.Schema({
   },
   // Saldo de entregas grátis restantes (isentas da taxa da plataforma).
   // Concedido no cadastro (ver register() em store.controller.js), com base
-  // no que estava vigente em PlatformSettings naquele momento — mudanças
+  // no que estava vigente em Settings naquele momento — mudanças
   // posteriores na promoção não afetam o saldo já concedido a esta loja.
   // Decrementado em deliverDelivery() (delivery.controller.js) sempre que
   // uma entrega é concluída com saldo disponível.

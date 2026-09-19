@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import app from '../app.js';
 import Store from '../models/store.js';
-import PlatformSettings from '../models/platformsettings.js';
+import Settings from '../models/settings.js';
 import bcryptjs from 'bcryptjs';
 import jsonwebtoken from 'jsonwebtoken';
 import * as sendEmail from '../utils/sendEmailV2.js';
@@ -83,7 +83,7 @@ describe('Store Routes', () => {
     // =====================
     // Saldo de entregas grátis concedido no cadastro
     // =====================
-    it('deve conceder o saldo padrão de entregas grátis quando não há PlatformSettings configurado', async () => {
+    it('deve conceder o saldo padrão de entregas grátis quando não há Settings configurado', async () => {
       const city = await createCity();
       vi.spyOn(sendEmail, 'sendStoreVerificationAccountEmail').mockResolvedValue({});
 
@@ -98,11 +98,11 @@ describe('Store Routes', () => {
         });
 
       expect(res.status).toBe(201);
-      // Sem documento de PlatformSettings ainda, getOrCreatePlatformSettings()
+      // Sem documento de Settings ainda, getOrCreateSettings()
       // cria um com os valores padrão: promoção ativa e 5 entregas grátis.
       expect(res.body.store.freeDeliveriesRemaining).toBe(5);
 
-      const settings = await PlatformSettings.findOne();
+      const settings = await Settings.findOne();
       expect(settings).not.toBeNull();
       expect(settings.freeDeliveriesPromoActive).toBe(true);
       expect(settings.freeDeliveriesGranted).toBe(5);
@@ -110,7 +110,7 @@ describe('Store Routes', () => {
 
     it('deve conceder o valor de freeDeliveriesGranted configurado, quando a promoção está ativa', async () => {
       const city = await createCity();
-      await PlatformSettings.create({ freeDeliveriesPromoActive: true, freeDeliveriesGranted: 10 });
+      await Settings.create({ freeDeliveriesPromoActive: true, freeDeliveriesGranted: 10 });
       vi.spyOn(sendEmail, 'sendStoreVerificationAccountEmail').mockResolvedValue({});
 
       const res = await request(app)
@@ -129,7 +129,7 @@ describe('Store Routes', () => {
 
     it('não deve conceder saldo de entregas grátis quando a promoção está desativada', async () => {
       const city = await createCity();
-      await PlatformSettings.create({ freeDeliveriesPromoActive: false, freeDeliveriesGranted: 5 });
+      await Settings.create({ freeDeliveriesPromoActive: false, freeDeliveriesGranted: 5 });
       vi.spyOn(sendEmail, 'sendStoreVerificationAccountEmail').mockResolvedValue({});
 
       const res = await request(app)

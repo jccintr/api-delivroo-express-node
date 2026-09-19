@@ -6,7 +6,7 @@ import { generateVerificationCode,sendStoreVerificationAccountEmail,sendStoreAcc
 import cloudinary from '../utils/cloudinary.js';
 import { geocodeAddress } from '../utils/googleMaps.js';
 import { buildStoreAddressText } from '../utils/address.js';
-import { getOrCreatePlatformSettings } from '../models/platformsettings.js';
+import { getOrCreateSettings } from '../models/settings.js';
 
 
 export const register = async (req, res) => {
@@ -38,8 +38,8 @@ export const register = async (req, res) => {
     // Concede o saldo de entregas grátis vigente no momento do cadastro.
     // Se a promoção for desativada depois, isso NÃO afeta o saldo já
     // concedido aqui — só passa a zerar o saldo de quem se cadastrar
-    // a partir da desativação (ver comentário em platformSettings.js).
-    const platformSettings = await getOrCreatePlatformSettings();
+    // a partir da desativação (ver comentário em models/settings.js).
+    const platformSettings = await getOrCreateSettings();
     const freeDeliveriesRemaining = platformSettings.freeDeliveriesPromoActive
       ? platformSettings.freeDeliveriesGranted
       : 0;

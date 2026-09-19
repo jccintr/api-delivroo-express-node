@@ -1,7 +1,7 @@
 import Store from '../models/store.js';
 import Delivery from '../models/delivery.js';
 import Rider from '../models/rider.js';
-import { getOrCreatePlatformSettings } from '../models/platformsettings.js';
+import { getOrCreateSettings } from '../models/settings.js';
 import { distanceBetween } from '../utils/googleMaps.js';
 import { buildStoreAddressText } from '../utils/address.js';
 import { todayBrazilRange, weekBrazilRange, monthBrazilRange, lastNDaysBrazilRange } from '../utils/brazilDate.js';
@@ -44,7 +44,7 @@ function calculateRiderPayout(km) {
 // crédito (de forma atômica, via findOneAndUpdate com $gt:0 — evita duas
 // entregas concluídas ao mesmo tempo consumirem o mesmo crédito) e a taxa
 // fica 0. Só quando não há mais saldo é que se aplica a taxa vigente em
-// PlatformSettings.
+// Settings.
 async function chargePlatformFeeForDelivery(storeId) {
   const storeAfterConsumingCredit = await Store.findOneAndUpdate(
     { _id: storeId, freeDeliveriesRemaining: { $gt: 0 } },
@@ -55,7 +55,7 @@ async function chargePlatformFeeForDelivery(storeId) {
     return { platformFee: 0, platformFeeWaived: true };
   }
 
-  const settings = await getOrCreatePlatformSettings();
+  const settings = await getOrCreateSettings();
   return { platformFee: settings.deliveryFee, platformFeeWaived: false };
 }
 
@@ -778,7 +778,7 @@ export const getStoreDashboardStats = async (req, res) => {
 
     // Lido à parte da agregação por período abaixo — é o estado ATUAL da
     // loja/plataforma, não algo que se soma por período.
-    const platformSettings = await getOrCreatePlatformSettings();
+    const platformSettings = await getOrCreateSettings();
 
     const now = new Date();
     const today = todayBrazilRange(now);

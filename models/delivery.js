@@ -89,7 +89,7 @@ riderPayout: {
 },
 // Taxa da plataforma cobrada da loja por esta entrega — preenchida apenas
 // quando a entrega é concluída (status 4, ver deliverDelivery), nunca na
-// criação. Fica null até lá. Reflete o valor vigente em PlatformSettings
+// criação. Fica null até lá. Reflete o valor vigente em Settings
 // no MOMENTO da conclusão (ou 0 se coberta pelo saldo de entregas grátis
 // da loja), não o valor atual — não muda retroativamente se a taxa da
 // plataforma for alterada depois.

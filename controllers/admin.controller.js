@@ -6,7 +6,7 @@ import Rider from '../models/rider.js';
 import Store from '../models/store.js';
 import City from '../models/city.js';
 import Delivery from '../models/delivery.js';
-import PlatformSettings, { getOrCreatePlatformSettings } from '../models/platformsettings.js';
+import Settings, { getOrCreateSettings } from '../models/settings.js';
 import { todayBrazilRange } from '../utils/brazilDate.js';
 import { sendRiderAccountApprovedEmail } from '../utils/sendEmailV2.js';
 
@@ -548,7 +548,7 @@ export const createCity = async (req, res) => {
 // padrão na primeira chamada, se ele ainda não existir.
 export const getPlatformSettings = async (req, res) => {
   try {
-    const settings = await getOrCreatePlatformSettings();
+    const settings = await getOrCreateSettings();
     return res.status(200).json(settings);
   } catch (error) {
     console.error('Erro no getPlatformSettings:', error);
@@ -576,9 +576,9 @@ export const updatePlatformSettings = async (req, res) => {
     if (freeDeliveriesGranted !== undefined) update.freeDeliveriesGranted = freeDeliveriesGranted;
 
     // Garante que o singleton já existe antes de tentar atualizá-lo.
-    await getOrCreatePlatformSettings();
+    await getOrCreateSettings();
 
-    const settings = await PlatformSettings.findOneAndUpdate(
+    const settings = await Settings.findOneAndUpdate(
       {},
       update,
       { returnDocument: 'after' },

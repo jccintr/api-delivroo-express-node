@@ -5,7 +5,7 @@ import Rider from '../models/rider.js';
 import Store from '../models/store.js';
 import City from '../models/city.js';
 import Delivery from '../models/delivery.js';
-import PlatformSettings from '../models/platformsettings.js';
+import Settings from '../models/settings.js';
 import {createAdmin,createAdminWithToken} from './factories/admin.factory.js'
 import {createStore} from './factories/store.factory.js'
 import {createRider} from './factories/rider.factory.js'
@@ -1039,12 +1039,12 @@ describe('Admin Routes', () => {
       expect(res.body.freeDeliveriesGranted).toBe(5);
 
       // E o documento singleton deve ter sido persistido no banco
-      const settingsCount = await PlatformSettings.countDocuments();
+      const settingsCount = await Settings.countDocuments();
       expect(settingsCount).toBe(1);
     });
 
     it('deve retornar as configurações já existentes, sem recriá-las', async () => {
-      await PlatformSettings.create({ deliveryFee: 3, freeDeliveriesPromoActive: false, freeDeliveriesGranted: 8 });
+      await Settings.create({ deliveryFee: 3, freeDeliveriesPromoActive: false, freeDeliveriesGranted: 8 });
       const { token } = await createAdminWithToken({ password: '123456' });
 
       const res = await request(app)
@@ -1056,7 +1056,7 @@ describe('Admin Routes', () => {
       expect(res.body.freeDeliveriesPromoActive).toBe(false);
       expect(res.body.freeDeliveriesGranted).toBe(8);
 
-      const settingsCount = await PlatformSettings.countDocuments();
+      const settingsCount = await Settings.countDocuments();
       expect(settingsCount).toBe(1);
     });
   });
@@ -1112,7 +1112,7 @@ describe('Admin Routes', () => {
     });
 
     it('deve atualizar apenas deliveryFee, mantendo os demais campos inalterados', async () => {
-      await PlatformSettings.create({ deliveryFee: 1.5, freeDeliveriesPromoActive: true, freeDeliveriesGranted: 5 });
+      await Settings.create({ deliveryFee: 1.5, freeDeliveriesPromoActive: true, freeDeliveriesGranted: 5 });
       const { token } = await createAdminWithToken({ password: '123456' });
 
       const res = await request(app)
@@ -1127,7 +1127,7 @@ describe('Admin Routes', () => {
     });
 
     it('deve desativar a promoção de entregas grátis sem mexer na taxa vigente', async () => {
-      await PlatformSettings.create({ deliveryFee: 1.5, freeDeliveriesPromoActive: true, freeDeliveriesGranted: 5 });
+      await Settings.create({ deliveryFee: 1.5, freeDeliveriesPromoActive: true, freeDeliveriesGranted: 5 });
       const { token } = await createAdminWithToken({ password: '123456' });
 
       const res = await request(app)
@@ -1141,7 +1141,7 @@ describe('Admin Routes', () => {
     });
 
     it('deve atualizar todos os campos de uma vez e persistir as mudanças', async () => {
-      await PlatformSettings.create({ deliveryFee: 1.5, freeDeliveriesPromoActive: true, freeDeliveriesGranted: 5 });
+      await Settings.create({ deliveryFee: 1.5, freeDeliveriesPromoActive: true, freeDeliveriesGranted: 5 });
       const { token } = await createAdminWithToken({ password: '123456' });
 
       const patchRes = await request(app)
