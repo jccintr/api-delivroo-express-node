@@ -6,7 +6,7 @@ import { generateVerificationCode,sendStoreVerificationAccountEmail,sendStoreAcc
 import cloudinary from '../utils/cloudinary.js';
 import { geocodeAddress } from '../utils/googleMaps.js';
 import { buildStoreAddressText } from '../utils/address.js';
-import { getOrCreatePlatformSettings } from '../models/platformSettings.js';
+import { getOrCreatePlatformSettings } from '../models/platformsettings.js';
 
 
 export const register = async (req, res) => {
@@ -115,7 +115,7 @@ export const validateToken = async (req, res) => {
     const storeId = req.user?.id || req.body.storeId;
 
     const store = await Store.findById(storeId).select(
-      'name email phone avatar doc active address emailVerifiedAt city'
+      'name email phone avatar doc active address emailVerifiedAt city freeDeliveriesRemaining'
     ).populate('city', 'name state');
 
     if (!store) {

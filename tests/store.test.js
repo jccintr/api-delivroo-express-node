@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import app from '../app.js';
 import Store from '../models/store.js';
-import PlatformSettings from '../models/platformSettings.js';
+import PlatformSettings from '../models/platformsettings.js';
 import bcryptjs from 'bcryptjs';
 import jsonwebtoken from 'jsonwebtoken';
 import * as sendEmail from '../utils/sendEmailV2.js';
@@ -250,6 +250,26 @@ describe('Store Routes', () => {
            expect(res.body.email).toBe(storePayload.email);
            expect(res.body.name).toBe(storePayload.name);
            expect(res.body.password).toBeUndefined();
+      });
+      it('deve incluir freeDeliveriesRemaining na resposta', async () => {
+        const res = await request(app)
+          .get('/api/stores/me')
+          .set('Authorization', `Bearer ${token}`);
+
+        expect(res.status).toBe(200);
+        // A loja do beforeEach foi criada sem passar por register(), então
+        // não recebeu crédito nenhum — deve vir no default do schema (0).
+        expect(res.body.freeDeliveriesRemaining).toBe(0);
+      });
+      it('deve refletir o saldo de entregas grátis atual da loja', async () => {
+        await Store.findByIdAndUpdate(storeId, { freeDeliveriesRemaining: 4 });
+
+        const res = await request(app)
+          .get('/api/stores/me')
+          .set('Authorization', `Bearer ${token}`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.freeDeliveriesRemaining).toBe(4);
       });
       it('deve retornar 401 sem token', async () => {
           const res = await request(app).get('/api/stores/me');

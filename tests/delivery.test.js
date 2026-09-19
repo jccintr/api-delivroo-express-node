@@ -7,7 +7,7 @@ import {createDelivery,createDeliveryPayload} from './factories/delivery.factory
 import {createRider,createRiderWithToken} from './factories/rider.factory.js'
 import Store from '../models/store.js';
 import Rider from '../models/rider.js';
-import PlatformSettings from '../models/platformSettings.js';
+import PlatformSettings from '../models/platformsettings.js';
 
 describe('delivery Routes', () => {
   // =====================
@@ -594,12 +594,15 @@ describe('delivery Routes', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.now).toEqual({ awaitingRider: 0, inProgress: 0 });
+      expect(res.body.billing).toEqual({ deliveryFee: 1.5, freeDeliveriesRemaining: 0 });
       const emptyPeriod = {
         requested: 0,
         completed: 0,
         cancelledOrReturned: 0,
         totalDistance: 0,
         totalRiderPayout: 0,
+        totalPlatformFee: 0,
+        freeDeliveriesUsedCount: 0,
         avgAcceptMinutes: null,
         avgDeliveryMinutes: null,
       };
@@ -705,6 +708,39 @@ describe('delivery Routes', () => {
       expect(res.body.today.totalRiderPayout).toBeCloseTo(20, 2); // 12 + 8
       expect(res.body.today.avgAcceptMinutes).toBeCloseTo(15, 1); // média de 10 e 20
       expect(res.body.today.avgDeliveryMinutes).toBeCloseTo(25, 1); // média de 30 e 20
+    });
+    it('billing: expõe a taxa vigente e o saldo de entregas grátis da loja, e soma totalPlatformFee/freeDeliveriesUsedCount por período', async () => {
+      await PlatformSettings.create({ deliveryFee: 2, freeDeliveriesPromoActive: true, freeDeliveriesGranted: 5 });
+      const { token, store } = await createStoreWithToken({ password: '123456', freeDeliveriesRemaining: 3 });
+      await Store.findByIdAndUpdate(store._id, { emailVerifiedAt: new Date(), active: true });
+      const now = new Date();
+
+      // Concluída hoje, cobrada com a taxa cheia
+      const d1 = await createDelivery({ store: store._id, status: 4, platformFee: 2, platformFeeWaived: false });
+      await Delivery.findByIdAndUpdate(d1._id, { createdAt: now }, { overwriteImmutable: true });
+
+      // Concluída hoje, isenta pelo saldo de entregas grátis
+      const d2 = await createDelivery({ store: store._id, status: 4, platformFee: 0, platformFeeWaived: true });
+      await Delivery.findByIdAndUpdate(d2._id, { createdAt: now }, { overwriteImmutable: true });
+
+      // Ainda em andamento — não tem platformFee (fica null até ser
+      // concluída) e não deve entrar nos totais do período.
+      await createDelivery({ store: store._id, status: 1 });
+
+      // De outra loja — não deve entrar em nenhum total nem no billing.
+      const outraLojaDelivery = await createDelivery({ status: 4, platformFee: 2 });
+      await Delivery.findByIdAndUpdate(outraLojaDelivery._id, { createdAt: now }, { overwriteImmutable: true });
+
+      const res = await request(app)
+        .get('/api/stores/deliveries/dashboard')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      // billing reflete o estado ATUAL (taxa vigente + saldo da loja), não
+      // é afetado pelas entregas já concluídas acima
+      expect(res.body.billing).toEqual({ deliveryFee: 2, freeDeliveriesRemaining: 3 });
+      expect(res.body.today.totalPlatformFee).toBeCloseTo(2, 2); // só a d1 (2) — d2 é isenta (0)
+      expect(res.body.today.freeDeliveriesUsedCount).toBe(1); // só a d2
     });
     it('chart: agrupa por dia (fuso de Brasília) dentro da janela de 30 dias', async () => {
       const { token, store } = await createStoreWithToken({ password: '123456' });

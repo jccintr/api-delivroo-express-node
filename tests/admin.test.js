@@ -5,7 +5,7 @@ import Rider from '../models/rider.js';
 import Store from '../models/store.js';
 import City from '../models/city.js';
 import Delivery from '../models/delivery.js';
-import PlatformSettings from '../models/platformSettings.js';
+import PlatformSettings from '../models/platformsettings.js';
 import {createAdmin,createAdminWithToken} from './factories/admin.factory.js'
 import {createStore} from './factories/store.factory.js'
 import {createRider} from './factories/rider.factory.js'

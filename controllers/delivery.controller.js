@@ -1,7 +1,7 @@
 import Store from '../models/store.js';
 import Delivery from '../models/delivery.js';
 import Rider from '../models/rider.js';
-import { getOrCreatePlatformSettings } from '../models/platformSettings.js';
+import { getOrCreatePlatformSettings } from '../models/platformsettings.js';
 import { distanceBetween } from '../utils/googleMaps.js';
 import { buildStoreAddressText } from '../utils/address.js';
 import { todayBrazilRange, weekBrazilRange, monthBrazilRange, lastNDaysBrazilRange } from '../utils/brazilDate.js';
@@ -692,6 +692,13 @@ function buildPeriodGroupStage() {
       cancelledOrReturned: { $sum: { $cond: [{ $in: ['$status', [5, 6]] }, 1, 0] } },
       totalDistance: { $sum: { $cond: [{ $eq: ['$status', 4] }, '$distancia', 0] } },
       totalRiderPayout: { $sum: { $cond: [{ $eq: ['$status', 4] }, '$riderPayout', 0] } },
+      // Taxa da plataforma cobrada da loja nas entregas concluídas do
+      // período, e quantas dessas vieram isentas pelo saldo de entregas
+      // grátis (platformFee só existe — não é null — em entregas com
+      // status 4, então o $cond por status é redundante mas mantido pra
+      // ficar simétrico com totalRiderPayout acima).
+      totalPlatformFee: { $sum: { $cond: [{ $eq: ['$status', 4] }, { $ifNull: ['$platformFee', 0] }, 0] } },
+      freeDeliveriesUsedCount: { $sum: { $cond: [{ $eq: ['$platformFeeWaived', true] }, 1, 0] } },
       sumAcceptMinutes: {
         $sum: {
           $cond: [
@@ -730,6 +737,8 @@ function pickPeriodStats(bucket) {
       cancelledOrReturned: 0,
       totalDistance: 0,
       totalRiderPayout: 0,
+      totalPlatformFee: 0,
+      freeDeliveriesUsedCount: 0,
       avgAcceptMinutes: null,
       avgDeliveryMinutes: null,
     };
@@ -741,6 +750,8 @@ function pickPeriodStats(bucket) {
     cancelledOrReturned: b.cancelledOrReturned,
     totalDistance: Math.round(b.totalDistance * 10) / 10,
     totalRiderPayout: Math.round(b.totalRiderPayout * 100) / 100,
+    totalPlatformFee: Math.round(b.totalPlatformFee * 100) / 100,
+    freeDeliveriesUsedCount: b.freeDeliveriesUsedCount,
     avgAcceptMinutes: b.countAccepted > 0 ? Math.round((b.sumAcceptMinutes / b.countAccepted) * 10) / 10 : null,
     avgDeliveryMinutes:
       b.countDelivered > 0 ? Math.round((b.sumDeliveryMinutes / b.countDelivered) * 10) / 10 : null,
@@ -751,7 +762,7 @@ export const getStoreDashboardStats = async (req, res) => {
   try {
     const storeId = req.user?.id;
 
-    const store = await Store.findById(storeId).select('name active emailVerifiedAt');
+    const store = await Store.findById(storeId).select('name active emailVerifiedAt freeDeliveriesRemaining');
 
     if (!store) {
       return res.status(404).json({ error: 'Loja não encontrada.' });
@@ -764,6 +775,10 @@ export const getStoreDashboardStats = async (req, res) => {
     if (!store.emailVerifiedAt) {
       return res.status(403).json({ error: 'Conta ainda não verificada.' });
     }
+
+    // Lido à parte da agregação por período abaixo — é o estado ATUAL da
+    // loja/plataforma, não algo que se soma por período.
+    const platformSettings = await getOrCreatePlatformSettings();
 
     const now = new Date();
     const today = todayBrazilRange(now);
@@ -836,6 +851,14 @@ export const getStoreDashboardStats = async (req, res) => {
       now: {
         awaitingRider: result?.now?.[0]?.awaitingRider ?? 0,
         inProgress: result?.now?.[0]?.inProgress ?? 0,
+      },
+      // Estado atual, não período: quanto a plataforma cobra por entrega
+      // concluída agora e quantas entregas grátis ainda restam pra essa
+      // loja. Os totais de taxa cobrada POR PERÍODO estão dentro de
+      // today/week/month (totalPlatformFee, freeDeliveriesUsedCount).
+      billing: {
+        deliveryFee: platformSettings.deliveryFee,
+        freeDeliveriesRemaining: store.freeDeliveriesRemaining,
       },
       today: pickPeriodStats(result?.today),
       week: pickPeriodStats(result?.week),

@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+// só para commit
 
 // Documento único (singleton) com as configurações globais de faturamento
 // da plataforma. Não existe rota de criação: getOrCreatePlatformSettings()

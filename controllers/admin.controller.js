@@ -6,7 +6,7 @@ import Rider from '../models/rider.js';
 import Store from '../models/store.js';
 import City from '../models/city.js';
 import Delivery from '../models/delivery.js';
-import PlatformSettings, { getOrCreatePlatformSettings } from '../models/platformSettings.js';
+import PlatformSettings, { getOrCreatePlatformSettings } from '../models/platformsettings.js';
 import { todayBrazilRange } from '../utils/brazilDate.js';
 import { sendRiderAccountApprovedEmail } from '../utils/sendEmailV2.js';
 
