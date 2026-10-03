@@ -1,6 +1,7 @@
 import bcryptjs from 'bcryptjs';
 import jsonwebtoken from 'jsonwebtoken';
 import Rider from '../models/rider.js';
+import Delivery from '../models/delivery.js';
 import City from '../models/city.js';
 import { generateVerificationCode,sendRiderVerificationAccountEmail,sendAccountVerifiedEmail,sendRiderPasswordResetEmail }  from '../utils/sendEmailV2.js'
 import cloudinary from '../utils/cloudinary.js';
@@ -547,6 +548,75 @@ export const updatePushToken = async (req, res) => {
     return res.status(200).json({ pushToken: rider.pushToken });
   } catch (error) {
     console.error('Erro no updatePushToken:', error);
+    return res.status(500).json({ error: 'Erro interno do servidor.' });
+  }
+};
+
+// POST /riders/delete-account
+// Exclusão definitiva da conta do próprio entregador, feita pela página web
+// pública de exclusão de dados (exigência da Google Play: link web para o
+// usuário pedir a exclusão sem precisar do app instalado). Por isso NÃO usa
+// AuthRider (não há JWT numa página aberta no navegador): a identidade é
+// provada por e-mail + senha, exatamente como no login — mesma mensagem
+// genérica para e-mail inexistente e senha errada, para não revelar quais
+// e-mails estão cadastrados. Contas desativadas (active: false) também podem
+// ser excluídas: o usuário tem direito à exclusão independentemente disso.
+//
+// O que é apagado: o documento inteiro do Rider (nome, e-mail, telefone, CPF,
+// veículo, push token, códigos de verificação, etc.) e a imagem no
+// Cloudinary. As entregas já feitas NÃO são tocadas: o MongoDB não impõe
+// integridade referencial, então `Delivery.rider` passa a apontar para um id
+// que não existe mais — os populate('rider') devolvem null e as telas da
+// loja/admin já tratam isso (as entregas ficam sem identificação do
+// entregador, o que é compatível com a retenção legítima do histórico).
+//
+// Entrega em andamento (status 1, 2 ou 3) bloqueia a exclusão: apagar o
+// entregador no meio da corrida deixaria a loja com uma entrega sem dono.
+//
+// A imagem do Cloudinary é apagada ANTES do documento, e uma falha ali
+// aborta a operação com 500 (sem apagar nada no banco): assim o usuário pode
+// tentar de novo e a exclusão nunca termina "pela metade" com uma foto
+// pública órfã. avatar e documentImage compartilham hoje o mesmo public_id
+// (ver uploadAvatar/uploadDocument), então um único destroy cobre os dois.
+export const deleteAccount = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    const rider = await Rider.findOne({ email }).select('password avatar documentImage');
+
+    if (!rider) {
+      return res.status(400).json({ error: 'Email ou senha inválidos.' });
+    }
+
+    const isPasswordValid = await bcryptjs.compare(password, rider.password);
+    if (!isPasswordValid) {
+      return res.status(400).json({ error: 'Email ou senha inválidos.' });
+    }
+
+    const hasActiveDelivery = await Delivery.exists({
+      rider: rider._id,
+      status: { $in: [1, 2, 3] },
+    });
+    if (hasActiveDelivery) {
+      return res.status(409).json({
+        error: 'Você tem uma entrega em andamento. Finalize ou cancele a entrega antes de excluir a conta.',
+      });
+    }
+
+    if (rider.avatar || rider.documentImage) {
+      try {
+        await cloudinary.uploader.destroy(`delivroo/riders/rider_${rider._id}`, { invalidate: true });
+      } catch (cloudinaryError) {
+        console.error('Erro ao apagar imagens do rider no Cloudinary:', cloudinaryError);
+        return res.status(500).json({ error: 'Não foi possível excluir sua conta agora. Tente novamente em instantes.' });
+      }
+    }
+
+    await Rider.deleteOne({ _id: rider._id });
+
+    return res.status(200).json({ message: 'Conta excluída com sucesso.' });
+  } catch (error) {
+    console.error('Erro no deleteAccount:', error);
     return res.status(500).json({ error: 'Erro interno do servidor.' });
   }
 };

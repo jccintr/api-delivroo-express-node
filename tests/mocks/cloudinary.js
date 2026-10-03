@@ -13,5 +13,6 @@ export default {
         },
       };
     }),
+    destroy: vi.fn().mockResolvedValue({ result: 'ok' }),
   },
 };

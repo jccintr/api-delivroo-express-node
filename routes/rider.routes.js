@@ -11,6 +11,8 @@ const router = Router();
 
 router.post('/register', registerValidator, validate, RiderController.register);
 router.post('/login', loginValidator, validate, RiderController.login);
+// Exclusão de conta pela página web pública (sem JWT): e-mail + senha, mesmo contrato do login.
+router.post('/delete-account', loginValidator, validate, RiderController.deleteAccount);
 router.post('/verify-account/resend',AuthRider,RiderController.resendAccountVerificationCode);
 router.post('/verify-account',AuthRider, accountVerificationValidator, validate,RiderController.verifyAccount);
 router.post('/password/request',RiderController.requestPasswordCode);
