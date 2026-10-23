@@ -6,6 +6,7 @@ import Rider from '../models/rider.js';
 import Store from '../models/store.js';
 import City from '../models/city.js';
 import Delivery from '../models/delivery.js';
+import RechargeOrder from '../models/rechargeOrder.js';
 import Settings, { getOrCreateSettings } from '../models/settings.js';
 import { todayBrazilRange } from '../utils/brazilDate.js';
 import { sendRiderAccountApprovedEmail } from '../utils/sendEmailV2.js';
@@ -259,6 +260,8 @@ export const getDashboardStats = async (req, res) => {
       activeStores,
       inactiveStores,
       totalStores,
+      rechargesInformed,
+      rechargesPending,
     ] = await Promise.all([
       Rider.countDocuments({ accountApprovedAt: null }),
       Rider.countDocuments({ active: true, accountApprovedAt: { $ne: null } }),
@@ -267,6 +270,8 @@ export const getDashboardStats = async (req, res) => {
       Store.countDocuments({ active: true }),
       Store.countDocuments({ active: false }),
       Store.countDocuments({}),
+      RechargeOrder.countDocuments({ status: 'informed' }),
+      RechargeOrder.countDocuments({ status: 'pending' }),
     ]);
 
     const today = todayBrazilRange();
@@ -293,6 +298,12 @@ export const getDashboardStats = async (req, res) => {
         total: totalStores,
         active: activeStores,
         inactive: inactiveStores,
+      },
+      // Recargas de pacotes: `informed` são pagamentos que as lojas dizem ter
+      // feito e que esperam a conferência do admin (o dado mais acionável).
+      recharges: {
+        informed: rechargesInformed,
+        pending: rechargesPending,
       },
       deliveriesToday: {
         requested: deliveriesTodayResult?.requested ?? 0,

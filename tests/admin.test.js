@@ -612,6 +612,7 @@ describe('Admin Routes', () => {
       expect(res.body).toEqual({
         riders: { total: 0, active: 0, inactive: 0, pendingApproval: 0 },
         stores: { total: 0, active: 0, inactive: 0 },
+        recharges: { informed: 0, pending: 0 },
         deliveriesToday: { requested: 0, completed: 0, cancelledOrReturned: 0 },
       });
     });

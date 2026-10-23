@@ -115,7 +115,7 @@ export const validateToken = async (req, res) => {
     const storeId = req.user?.id || req.body.storeId;
 
     const store = await Store.findById(storeId).select(
-      'name email phone avatar doc active address emailVerifiedAt city freeDeliveriesRemaining'
+      'name email phone avatar doc active address emailVerifiedAt city freeDeliveriesRemaining deliveryCredits'
     ).populate('city', 'name state');
 
     if (!store) {

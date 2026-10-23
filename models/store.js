@@ -61,6 +61,16 @@ const storeSchema = new mongoose.Schema({
     default: 0,
     min: 0,
   },
+  // Saldo de entregas COMPRADAS (pacotes pré-pagos pagos via Pix e
+  // confirmados pelo admin). Não expira. Consumido em deliverDelivery()
+  // DEPOIS de esgotar as entregas grátis acima. Toda movimentação fica no
+  // extrato (model CreditTransaction).
+  deliveryCredits: {
+    type: Number,
+    required: false,
+    default: 0,
+    min: 0,
+  },
   active: {
     type: Boolean,
     required: false,

@@ -14,6 +14,24 @@ function registerStoreSocket(storeId, ws) {
   storeSockets.get(storeId).add(ws);
 }
 
+// Conexões dos administradores (painel admin aberto). Mesmo formato do mapa
+// de lojas, mas sem chave: todo admin conectado recebe os avisos gerais
+// (ex.: "uma loja informou pagamento").
+const adminSockets = new Set();
+
+// Envia um evento para todos os admins conectados. Não faz nada se não
+// houver nenhum — o admin vê o estado atual ao abrir o painel.
+export function notifyAdmins(event) {
+  if (adminSockets.size === 0) return;
+
+  const payload = JSON.stringify(event);
+  for (const ws of adminSockets) {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(payload);
+    }
+  }
+}
+
 function unregisterStoreSocket(storeId, ws) {
   const sockets = storeSockets.get(storeId);
   if (!sockets) return;
@@ -71,21 +89,38 @@ const websocket = (server, { heartbeatIntervalMs = HEARTBEAT_INTERVAL_MS } = {})
       return;
     }
 
-    let storeId;
+    // O mesmo endereço de WebSocket serve lojas e admins: o token decide
+    // quem está conectando (JWT_SECRET_STORE ou JWT_SECRET_ADMIN).
+    let storeId = null;
+    let isAdmin = false;
     try {
       const decoded = jsonwebtoken.verify(token, process.env.JWT_SECRET_STORE);
+      if (!decoded.storeId) throw new Error('token sem storeId');
       storeId = String(decoded.storeId);
-    } catch (error) {
-      ws.close(4001, 'Token inválido');
-      return;
+    } catch (storeError) {
+      try {
+        const decoded = jsonwebtoken.verify(token, process.env.JWT_SECRET_ADMIN);
+        if (!decoded.adminId) throw new Error('token sem adminId');
+        isAdmin = true;
+      } catch (adminError) {
+        ws.close(4001, 'Token inválido');
+        return;
+      }
     }
 
-    ws.storeId = storeId;
     ws.isAlive = true;
     ws.on('pong', () => {
       ws.isAlive = true;
     });
 
+    if (isAdmin) {
+      adminSockets.add(ws);
+      ws.on('close', () => adminSockets.delete(ws));
+      ws.on('error', () => adminSockets.delete(ws));
+      return;
+    }
+
+    ws.storeId = storeId;
     registerStoreSocket(storeId, ws);
 
     ws.on('close', () => {

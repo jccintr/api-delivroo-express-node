@@ -107,6 +107,17 @@ platformFeeWaived: {
   required: false,
   default: false,
 },
+// true quando esta entrega consumiu 1 crédito de um pacote comprado pela
+// loja. Nesse caso platformFee guarda o valor de tabela da taxa (Settings)
+// no momento da conclusão — o que a loja de fato pagou é o preço do pacote.
+// Se platformFee > 0, platformFeeWaived false e paidWithCredit false, a
+// entrega foi concluída sem nenhum saldo (corrida entre duas entregas
+// abertas ao mesmo tempo) e a taxa ficou em aberto.
+paidWithCredit: {
+  type: Boolean,
+  required: false,
+  default: false,
+},
 
 }, { timestamps: true });
 

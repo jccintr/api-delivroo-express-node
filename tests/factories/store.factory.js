@@ -23,6 +23,10 @@ export async function createStore(overrides = {}) {
       phone: '+5511999999999',
       city: city._id,
       address: storeAddress,
+      // Saldo comprado alto por padrão: criar entregas exige saldo (ver
+      // createDelivery) e a maioria dos testes não é sobre isso. Testes de
+      // saldo passam deliveryCredits/freeDeliveriesRemaining explicitamente.
+      deliveryCredits: 100,
       ...overrides,
       password: overrides.password  ? await bcryptjs.hash(overrides.password, 10) : hashedPassword,
  });

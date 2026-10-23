@@ -17,6 +17,10 @@ tags:
     description: Autenticação e perfil das lojas
   - name: Deliveries
     description: Criação e listagem de entregas (loja e rider)
+  - name: Credits
+    description: Pacotes de entregas pré-pagos, pagos via Pix (loja)
+  - name: Admin Credits
+    description: Pacotes, recargas pendentes e saldo das lojas (admin)
 
 paths:
   # =====================
@@ -55,6 +59,54 @@ paths:
           description: Email ou senha inválidos
         '403':
           description: Conta desativada
+
+  /riders/delete-account:
+    post:
+      tags: [Riders]
+      summary: Excluir a conta do rider (página web de exclusão de dados)
+      description: |
+        Exclusão definitiva da conta, sem JWT — usada pela página pública de
+        exclusão de dados exigida pela Google Play. A identidade é provada
+        por e-mail + senha (mesmo contrato do login, mesma mensagem genérica
+        para e-mail inexistente e senha errada). Contas desativadas também
+        podem ser excluídas.
+
+        Apaga o documento do rider (dados pessoais) e a imagem no Cloudinary.
+        As entregas já feitas são mantidas, sem identificação do entregador.
+        Bloqueada (409) enquanto houver entrega em andamento (status 1, 2 ou 3).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RiderLogin'
+      responses:
+        '200':
+          description: Conta excluída
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              example:
+                message: Conta excluída com sucesso.
+        '400':
+          description: Dados inválidos, ou e-mail/senha inválidos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Email ou senha inválidos.
+        '409':
+          description: Há uma entrega em andamento
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: Você tem uma entrega em andamento. Finalize ou cancele a entrega antes de excluir a conta.
+        '500':
+          description: Erro interno (inclui falha ao apagar a imagem no Cloudinary — pode tentar de novo)
 
   /riders/me:
     get:
@@ -1175,6 +1227,261 @@ paths:
         '500':
           description: Erro interno do servidor
 
+
+  # =====================
+  # PACOTES DE ENTREGAS (LOJA)
+  # =====================
+  /stores/credits:
+    get:
+      tags: [Credits]
+      summary: Saldo de entregas da loja e pedido de recarga em aberto
+      description: >
+        `free` = entregas grátis da promoção, `purchased` = entregas compradas em pacote,
+        `available` = soma, `openDeliveries` = entregas em andamento (ainda vão gastar saldo),
+        `availableToRequest` = o que ainda dá para pedir. `openOrder` traz o QR Pix se houver pedido em aberto.
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Saldo e pedido em aberto }
+        '401': { description: Não autorizado }
+
+  /stores/credits/packages:
+    get:
+      tags: [Credits]
+      summary: Pacotes disponíveis para compra (somente os habilitados)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Lista de pacotes com preço por entrega (unitPrice) }
+
+  /stores/credits/transactions:
+    get:
+      tags: [Credits]
+      summary: Extrato do saldo comprado (entradas e saídas)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: query, name: page, schema: { type: integer, minimum: 1 } }
+        - { in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 100 } }
+      responses:
+        '200': { description: Página do extrato }
+
+  /stores/credits/orders:
+    post:
+      tags: [Credits]
+      summary: Criar pedido de recarga (gera o Pix)
+      description: >
+        Devolve `pixPayload` (Pix copia e cola) e `qrCodeDataUrl` (PNG em data URL).
+        Só pode haver um pedido em aberto por loja (409 `OPEN_ORDER_EXISTS`).
+        503 `PIX_NOT_CONFIGURED` se a chave Pix não estiver no .env.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [packageId]
+              properties:
+                packageId: { type: string }
+      responses:
+        '201': { description: Pedido criado }
+        '400': { description: Dados inválidos }
+        '404': { description: Pacote não encontrado ou desabilitado }
+        '409': { description: Já existe pedido em aberto }
+        '503': { description: Pix não configurado }
+    get:
+      tags: [Credits]
+      summary: Histórico de pedidos de recarga da loja
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Página de pedidos }
+
+  /stores/credits/orders/{id}:
+    get:
+      tags: [Credits]
+      summary: Detalhe de um pedido (com QR se ainda aguardando pagamento)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Pedido }
+        '404': { description: Pedido não encontrado }
+
+  /stores/credits/orders/{id}/inform:
+    post:
+      tags: [Credits]
+      summary: '"Já paguei" — informa o pagamento ao admin'
+      description: >
+        Muda o pedido para `informed` e avisa o admin por e-mail e em tempo real.
+        NÃO libera saldo: só o admin confirma. Comprovante opcional (imagem ou PDF, até 5 MB).
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                payerNote: { type: string, maxLength: 200 }
+                receipt: { type: string, format: binary }
+      responses:
+        '200': { description: Pedido informado }
+        '404': { description: Pedido não encontrado }
+        '409': { description: Pedido não está aguardando pagamento }
+
+  /stores/credits/orders/{id}/cancel:
+    post:
+      tags: [Credits]
+      summary: Cancelar um pedido ainda não pago
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Pedido cancelado }
+        '409': { description: Só pedidos aguardando pagamento podem ser cancelados }
+
+  # =====================
+  # PACOTES E RECARGAS (ADMIN)
+  # =====================
+  /admin/credit-packages:
+    get:
+      tags: [Admin Credits]
+      summary: Listar todos os pacotes (inclusive desabilitados)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Pacotes }
+    post:
+      tags: [Admin Credits]
+      summary: Criar pacote
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, deliveries, price]
+              properties:
+                name: { type: string, maxLength: 60 }
+                deliveries: { type: integer, minimum: 1 }
+                price: { type: number, description: Em reais, até 2 casas decimais }
+                active: { type: boolean }
+      responses:
+        '201': { description: Pacote criado }
+        '400': { description: Dados inválidos }
+
+  /admin/credit-packages/{id}:
+    patch:
+      tags: [Admin Credits]
+      summary: Editar, habilitar ou desabilitar um pacote
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Pacote atualizado }
+        '404': { description: Pacote não encontrado }
+    delete:
+      tags: [Admin Credits]
+      summary: Excluir pacote (pedidos antigos não são afetados)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Pacote excluído }
+        '404': { description: Pacote não encontrado }
+
+  /admin/recharge-orders:
+    get:
+      tags: [Admin Credits]
+      summary: Listar pedidos de recarga
+      description: '`status` aceita pending, informed, confirmed, rejected, cancelled ou open (pending + informed). Os informados vêm primeiro.'
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: query, name: status, schema: { type: string } }
+        - { in: query, name: store, schema: { type: string } }
+        - { in: query, name: page, schema: { type: integer } }
+        - { in: query, name: limit, schema: { type: integer } }
+      responses:
+        '200': { description: Página de pedidos e contadores (counts) }
+
+  /admin/recharge-orders/summary:
+    get:
+      tags: [Admin Credits]
+      summary: Contadores para o destaque do painel (informed e pending)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: '{ informed, pending }' }
+
+  /admin/recharge-orders/{id}:
+    get:
+      tags: [Admin Credits]
+      summary: Detalhe do pedido de recarga
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Pedido }
+        '404': { description: Pedido não encontrado }
+
+  /admin/recharge-orders/{id}/confirm:
+    post:
+      tags: [Admin Credits]
+      summary: Confirmar o pagamento e creditar as entregas na loja
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Pedido confirmado e saldo creditado }
+        '404': { description: Pedido não encontrado }
+        '409': { description: Pedido já resolvido }
+
+  /admin/recharge-orders/{id}/reject:
+    post:
+      tags: [Admin Credits]
+      summary: Recusar o pedido (não credita nada)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 3, maxLength: 200 }
+      responses:
+        '200': { description: Pedido recusado }
+        '409': { description: Pedido já resolvido }
+
+  /admin/stores/{id}/credits:
+    get:
+      tags: [Admin Credits]
+      summary: Saldo e extrato da loja
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Saldo e últimas movimentações }
+    post:
+      tags: [Admin Credits]
+      summary: Ajuste manual de saldo (cortesia ou correção)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [delta, note]
+              properties:
+                delta: { type: integer, description: Positivo soma, negativo tira (nunca deixa o saldo abaixo de zero) }
+                note: { type: string, minLength: 3, maxLength: 200 }
+      responses:
+        '200': { description: Novo saldo }
+        '409': { description: O ajuste deixaria o saldo negativo }
 
 components:
   securitySchemes:

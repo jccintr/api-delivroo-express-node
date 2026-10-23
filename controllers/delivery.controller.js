@@ -6,6 +6,7 @@ import { distanceBetween } from '../utils/googleMaps.js';
 import { buildStoreAddressText } from '../utils/address.js';
 import { todayBrazilRange, weekBrazilRange, monthBrazilRange, lastNDaysBrazilRange } from '../utils/brazilDate.js';
 import { notifyStore } from '../websocket.js';
+import { consumeCredit, getStoreBalance } from '../utils/credits.js';
 import { notifyNewDeliveryAvailable, notifyRiderDeliveryCancelled } from '../utils/pushNotifications.js';
 import { matchedData } from 'express-validator';
 
@@ -40,23 +41,35 @@ function calculateRiderPayout(km) {
 // confirmada de forma atômica em deliverDelivery — ou seja, roda no máximo
 // uma vez por entrega, sem risco de dupla contagem em corrida.
 //
-// Prioridade: se a loja ainda tem saldo de entregas grátis, consome 1
-// crédito (de forma atômica, via findOneAndUpdate com $gt:0 — evita duas
-// entregas concluídas ao mesmo tempo consumirem o mesmo crédito) e a taxa
-// fica 0. Só quando não há mais saldo é que se aplica a taxa vigente em
-// Settings.
-async function chargePlatformFeeForDelivery(storeId) {
+// Ordem de consumo do saldo da loja:
+//  1) entregas grátis da promoção (freeDeliveriesRemaining) — taxa 0;
+//  2) entregas compradas em pacote (deliveryCredits) — grava a taxa de
+//     tabela vigente em platformFee e marca paidWithCredit;
+//  3) sem saldo nenhum (só acontece se várias entregas abertas terminaram
+//     ao mesmo tempo, já que a criação é bloqueada sem saldo) — grava a
+//     taxa de tabela e deixa paidWithCredit false: fica em aberto.
+// Cada consumo é atômico (filtro $gt:0), então duas entregas concluídas ao
+// mesmo tempo nunca gastam o mesmo crédito.
+async function chargePlatformFeeForDelivery(storeId, deliveryId) {
   const storeAfterConsumingCredit = await Store.findOneAndUpdate(
     { _id: storeId, freeDeliveriesRemaining: { $gt: 0 } },
     { $inc: { freeDeliveriesRemaining: -1 } },
   );
 
   if (storeAfterConsumingCredit) {
-    return { platformFee: 0, platformFeeWaived: true };
+    return { platformFee: 0, platformFeeWaived: true, paidWithCredit: false };
   }
 
   const settings = await getOrCreateSettings();
-  return { platformFee: settings.deliveryFee, platformFeeWaived: false };
+
+  // consumeCredit devolve null sem saldo; { duplicate: true } quando esta
+  // entrega já tinha consumido um crédito (nesse caso também conta como paga).
+  const purchased = await consumeCredit({ storeId, deliveryId });
+  if (purchased) {
+    return { platformFee: settings.deliveryFee, platformFeeWaived: false, paidWithCredit: true };
+  }
+
+  return { platformFee: settings.deliveryFee, platformFeeWaived: false, paidWithCredit: false };
 }
 
 // POST /stores/deliveries
@@ -84,6 +97,18 @@ export const createDelivery = async (req, res) => {
 
     if (!store.emailVerifiedAt) {
       return res.status(403).json({ error: 'Conta ainda não verificada.' });
+    }
+
+    // Sem saldo, sem entrega: a loja precisa ter pelo menos 1 entrega livre
+    // (grátis ou comprada) além das que já estão em andamento.
+    const balance = await getStoreBalance(storeId);
+    if (!balance || balance.availableToRequest < 1) {
+      return res.status(402).json({
+        error: 'Você não tem entregas disponíveis. Compre um pacote para continuar solicitando entregas.',
+        code: 'INSUFFICIENT_CREDITS',
+        available: balance?.available ?? 0,
+        openDeliveries: balance?.openDeliveries ?? 0,
+      });
     }
 
     const origemAddress = buildStoreAddressText(store.address);
@@ -496,9 +521,13 @@ export const deliverDelivery = async (req, res) => {
     // A transição de status acima já é atômica e só passa uma vez por
     // entrega — a partir daqui é seguro calcular e gravar a taxa da
     // plataforma sem risco de cobrar a mesma entrega duas vezes.
-    const { platformFee, platformFeeWaived } = await chargePlatformFeeForDelivery(delivery.store._id ?? delivery.store);
+    const { platformFee, platformFeeWaived, paidWithCredit } = await chargePlatformFeeForDelivery(
+      delivery.store._id ?? delivery.store,
+      delivery._id,
+    );
     delivery.platformFee = platformFee;
     delivery.platformFeeWaived = platformFeeWaived;
+    delivery.paidWithCredit = paidWithCredit;
     await delivery.save();
 
     return res.status(200).json(delivery);
@@ -762,7 +791,7 @@ export const getStoreDashboardStats = async (req, res) => {
   try {
     const storeId = req.user?.id;
 
-    const store = await Store.findById(storeId).select('name active emailVerifiedAt freeDeliveriesRemaining');
+    const store = await Store.findById(storeId).select('name active emailVerifiedAt freeDeliveriesRemaining deliveryCredits');
 
     if (!store) {
       return res.status(404).json({ error: 'Loja não encontrada.' });
@@ -859,6 +888,20 @@ export const getStoreDashboardStats = async (req, res) => {
       billing: {
         deliveryFee: platformSettings.deliveryFee,
         freeDeliveriesRemaining: store.freeDeliveriesRemaining,
+      },
+      // Saldo total de entregas: grátis + compradas em pacote (ver
+      // models/rechargeOrder.js). `availableToRequest` já desconta as
+      // entregas em andamento e é o que libera ou bloqueia um novo pedido.
+      credits: {
+        free: store.freeDeliveriesRemaining ?? 0,
+        purchased: store.deliveryCredits ?? 0,
+        available: (store.freeDeliveriesRemaining ?? 0) + (store.deliveryCredits ?? 0),
+        openDeliveries: (result?.now?.[0]?.awaitingRider ?? 0) + (result?.now?.[0]?.inProgress ?? 0),
+        availableToRequest: Math.max(
+          0,
+          (store.freeDeliveriesRemaining ?? 0) + (store.deliveryCredits ?? 0)
+            - ((result?.now?.[0]?.awaitingRider ?? 0) + (result?.now?.[0]?.inProgress ?? 0)),
+        ),
       },
       today: pickPeriodStats(result?.today),
       week: pickPeriodStats(result?.week),
