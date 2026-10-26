@@ -91,3 +91,16 @@ export function lastNDaysBrazilRange(now = new Date(), days = 30) {
     end: toBrazilDayEnd(todayStr),
   };
 }
+
+// Dia da semana (0 = domingo ... 6 = sábado) e minutos desde 00:00, no fuso de
+// Brasília, de um instante qualquer. Usado pelas faixas de horário do valor
+// da entrega ("sexta e sábado das 18h às 23h").
+const WEEKDAY_INDEX = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+const brazilClock = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'America/Sao_Paulo', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+});
+
+export function brazilWeekdayAndMinutes(date = new Date()) {
+  const parts = Object.fromEntries(brazilClock.formatToParts(date).map((p) => [p.type, p.value]));
+  return { weekday: WEEKDAY_INDEX[parts.weekday], minutes: Number(parts.hour) * 60 + Number(parts.minute) };
+}

@@ -87,6 +87,14 @@ riderPayout: {
   required: true,
   min: 0,
 },
+// Como o riderPayout foi calculado (base, km, mínimo, adicionais de horário e
+// de chuva, arredondamento). Só o admin vê: não vem nas consultas comuns
+// (select: false) e createDelivery o remove da resposta da loja.
+payoutBreakdown: {
+  type: mongoose.Schema.Types.Mixed,
+  default: null,
+  select: false,
+},
 // Taxa da plataforma cobrada da loja por esta entrega — preenchida apenas
 // quando a entrega é concluída (status 4, ver deliverDelivery), nunca na
 // criação. Fica null até lá. Reflete o valor vigente em Settings

@@ -21,6 +21,8 @@ tags:
     description: Pacotes de entregas pré-pagos, pagos via Pix (loja)
   - name: Admin Credits
     description: Pacotes, recargas pendentes e saldo das lojas (admin)
+  - name: Admin Pricing
+    description: Regras de cálculo do valor da entrega por cidade (admin)
 
 paths:
   # =====================
@@ -1482,6 +1484,129 @@ paths:
       responses:
         '200': { description: Novo saldo }
         '409': { description: O ajuste deixaria o saldo negativo }
+
+  # ----- Regras de valor da entrega, por cidade (admin) -----
+  /admin/pricing-rules:
+    get:
+      tags: [Admin Pricing]
+      summary: Resumo das regras de valor da entrega (quais cidades têm regra própria e quais estão em modo chuva)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: "Lista de { city, rainActive, updatedAt }" }
+
+  /admin/cities/{id}/pricing:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string }, description: Id da cidade }
+    get:
+      tags: [Admin Pricing]
+      summary: Regra de cálculo do valor da entrega da cidade
+      description: Cidade sem regra própria devolve a regra padrão (custom=false).
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: "{ city, custom, rule, updatedAt }" }
+        '404': { description: Cidade não encontrada }
+    put:
+      tags: [Admin Pricing]
+      summary: Salvar a regra da cidade (campos omitidos voltam ao padrão)
+      description: |
+        Valor = baseFee + perKm × km; acima de longDistanceFromKm soma longDistanceExtra a cada bloco de
+        longDistanceBlockKm; aplica minimumFee; soma os adicionais ativos (faixas de horário e modo chuva);
+        arredonda (integer = real inteiro, cents = centavos) e aplica o teto maximumFee. Vale para as próximas entregas.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                baseFee: { type: number, example: 8.55 }
+                perKm: { type: number, example: 1.6 }
+                minimumFee: { type: number, example: 8 }
+                longDistanceFromKm: { type: number, example: 15 }
+                longDistanceBlockKm: { type: number, example: 3 }
+                longDistanceExtra: { type: number, example: 2 }
+                maximumFee: { type: number, nullable: true, description: Teto do valor; null = sem teto }
+                rounding: { type: string, enum: [integer, cents] }
+                adjustments:
+                  type: array
+                  maxItems: 20
+                  items:
+                    type: object
+                    required: [name, kind, value, from, to]
+                    properties:
+                      name: { type: string, maxLength: 60 }
+                      kind: { type: string, enum: [percent, fixed] }
+                      value: { type: number, description: "percent: até 300; fixed: até 100 reais" }
+                      from: { type: string, example: '18:00', description: Horário de Brasília (HH:MM) }
+                      to: { type: string, example: '23:00', description: Fim exclusivo; menor que 'from' cruza a meia-noite }
+                      days: { type: array, items: { type: integer, minimum: 0, maximum: 6 }, description: 0 = domingo ... 6 = sábado; vazio = todos }
+                      active: { type: boolean }
+                rain:
+                  type: object
+                  properties:
+                    active: { type: boolean }
+                    kind: { type: string, enum: [percent, fixed] }
+                    value: { type: number }
+      responses:
+        '200': { description: Regra salva }
+        '400': { description: Dados inválidos }
+        '404': { description: Cidade não encontrada }
+    delete:
+      tags: [Admin Pricing]
+      summary: Voltar a cidade para a regra padrão
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Regra padrão }
+        '404': { description: Cidade não encontrada }
+
+  /admin/cities/{id}/pricing/rain:
+    patch:
+      tags: [Admin Pricing]
+      summary: Ligar ou desligar o modo chuva da cidade
+      description: Mexe só no modo chuva; o resto da regra é mantido. Para ligar, o valor do adicional precisa ser maior que 0.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [active]
+              properties:
+                active: { type: boolean }
+                kind: { type: string, enum: [percent, fixed] }
+                value: { type: number }
+      responses:
+        '200': { description: Regra atualizada }
+        '400': { description: Dados inválidos }
+        '404': { description: Cidade não encontrada }
+
+  /admin/cities/{id}/pricing/simulate:
+    post:
+      tags: [Admin Pricing]
+      summary: Simular o valor de uma entrega
+      description: Usa a regra salva da cidade, ou o rascunho enviado em `rule` (sem salvar). `at` padrão = agora.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [km]
+              properties:
+                km: { type: number, minimum: 0, maximum: 500 }
+                at: { type: string, format: date-time }
+                rule: { type: object, description: Mesmo formato do PUT }
+      responses:
+        '200': { description: "{ total, breakdown }" }
+        '400': { description: Dados inválidos }
+        '404': { description: Cidade não encontrada }
 
 components:
   securitySchemes:

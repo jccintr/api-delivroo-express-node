@@ -471,6 +471,7 @@ export const listDeliveries = async (req, res) => {
         .populate('store', 'name avatar phone email')
         .populate('rider', 'name phone email avatar vehicle rating')
         .populate('city', 'name state')
+        .select('+payoutBreakdown') // detalhamento do valor do entregador: só o admin vê
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit),

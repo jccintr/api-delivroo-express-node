@@ -3,6 +3,8 @@ import Delivery from '../models/delivery.js';
 import Rider from '../models/rider.js';
 import { getOrCreateSettings } from '../models/settings.js';
 import { distanceBetween } from '../utils/googleMaps.js';
+import { getRuleForCity } from '../models/pricingRule.js';
+import { calculateRiderPayout } from '../utils/riderPayout.js';
 import { buildStoreAddressText } from '../utils/address.js';
 import { todayBrazilRange, weekBrazilRange, monthBrazilRange, lastNDaysBrazilRange } from '../utils/brazilDate.js';
 import { notifyStore } from '../websocket.js';
@@ -10,31 +12,6 @@ import { consumeCredit, getStoreBalance } from '../utils/credits.js';
 import { notifyNewDeliveryAvailable, notifyRiderDeliveryCancelled } from '../utils/pushNotifications.js';
 import { matchedData } from 'express-validator';
 
-
-// TODO: substituir por um cálculo real (baseado em distância, categoria do
-// pacote, demanda/hora, taxa mínima etc.) quando essa regra de negócio for
-// definida. Por enquanto gera um valor aleatório só para termos o dado
-// preenchido e podermos avançar no front do rider.
-function calculateRiderPayout(km) {
-  const BASE = 8.55;
-  const PRECO_KM = 1.6;
-  const MINIMO = 8;
-  const LIMITE_LINEAR = 15;
-  const EXTRA_REAIS = 2;
-  const EXTRA_A_CADA_KM = 3;
-
-  if (km == null || km < 0) return MINIMO;
-
-  let taxa = BASE + PRECO_KM * km;
-
-  if (km > LIMITE_LINEAR) {
-    const kmExcedentes = km - LIMITE_LINEAR;
-    const blocos = Math.ceil(kmExcedentes / EXTRA_A_CADA_KM);
-    taxa += blocos * EXTRA_REAIS;
-  }
-
-  return Math.max(MINIMO, Math.round(taxa));
-}
 
 // Calcula e "cobra" a taxa da plataforma referente a UMA entrega concluída.
 // Chamada só depois que a transição de status para 4 (entregue) já foi
@@ -133,6 +110,11 @@ export const createDelivery = async (req, res) => {
       });
     }
 
+    // distancia é armazenada em quilômetros, com 2 casas decimais
+    const distanceKm = Math.round((distanceInfo.meters / 1000) * 100) / 100;
+    // valor do entregador: regras da cidade da loja (ou a padrão), vigentes AGORA — fica gravado na entrega
+    const { total: riderPayout, breakdown: payoutBreakdown } = calculateRiderPayout(distanceKm, await getRuleForCity(store.city));
+
     const delivery = new Delivery({
       store: storeId,
       city: store.city,
@@ -149,9 +131,9 @@ export const createDelivery = async (req, res) => {
         nome: destino.nome,
         telefone: destino.telefone,
       },
-      // distancia é armazenada em quilômetros, com 2 casas decimais
-      distancia: Math.round((distanceInfo.meters / 1000) * 100) / 100,
-      riderPayout: calculateRiderPayout(Math.round((distanceInfo.meters / 1000) * 100) / 100),
+      distancia: distanceKm,
+      riderPayout,
+      payoutBreakdown,
       package: {
         description: pkg.description,
         category: pkg.category,
@@ -172,7 +154,10 @@ export const createDelivery = async (req, res) => {
       console.error('Erro ao notificar riders sobre nova entrega:', error);
     });
 
-    return res.status(201).json(delivery);
+    // o detalhamento do cálculo é só do admin: não vai na resposta da loja
+    const body = delivery.toObject();
+    delete body.payoutBreakdown;
+    return res.status(201).json(body);
   } catch (error) {
     console.error('Erro no createDelivery:', error);
     return res.status(500).json({ error: 'Erro interno do servidor.' });

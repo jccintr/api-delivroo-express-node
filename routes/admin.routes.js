@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import * as AdminController from '../controllers/admin.controller.js';
 import * as AdminCreditController from '../controllers/admin.credit.controller.js';
+import * as AdminPricingController from '../controllers/admin.pricing.controller.js';
 import AuthAdmin from '../middlewares/auth.admin.js';
 import {validate} from '../middlewares/validate.js'
 import { registerValidator, loginValidator, createCityValidator, listRidersValidator, listStoresValidator, listDeliveriesValidator, updatePlatformSettingsValidator } from '../validators/admin.validator.js';
@@ -32,6 +33,13 @@ router.patch('/stores/:id/active', AuthAdmin, AdminController.setStoreActive);
 router.get('/deliveries', AuthAdmin, listDeliveriesValidator, validate, AdminController.listDeliveries);
 router.get('/cities', AuthAdmin, AdminController.listCities);
 router.post('/cities', AuthAdmin,createCityValidator, validate, AdminController.createCity);
+// Regras de cálculo do valor da entrega, por cidade
+router.get('/pricing-rules', AuthAdmin, AdminPricingController.listPricingRules);
+router.get('/cities/:id/pricing', AuthAdmin, AdminPricingController.getCityPricing);
+router.put('/cities/:id/pricing', AuthAdmin, AdminPricingController.saveCityPricing);
+router.delete('/cities/:id/pricing', AuthAdmin, AdminPricingController.resetCityPricing);
+router.patch('/cities/:id/pricing/rain', AuthAdmin, AdminPricingController.setCityRain);
+router.post('/cities/:id/pricing/simulate', AuthAdmin, AdminPricingController.simulateCityPricing);
 router.get('/platform-settings', AuthAdmin, AdminController.getPlatformSettings);
 router.patch('/platform-settings', AuthAdmin, updatePlatformSettingsValidator, validate, AdminController.updatePlatformSettings);
 
